@@ -41,15 +41,22 @@ export function PipelinePage() {
   }
 
   function handleMoveDeal(dealId: string, stage: Stage) {
+    // Guarda contra mover para a própria coluna (ex.: soltar o card de volta
+    // onde estava): sem esse early-return o reducer resetaria stageChangedAt
+    // (zerando o relógio de "parado"), criaria uma Activity de mudança de
+    // estágio espúria e, em pos_venda, re-dispararia o toast de venda ganha
+    // com Activity de venda duplicada.
+    const deal = state.deals.find((d) => d.id === dealId);
+    if (!deal || deal.stage === stage) return;
+
     if (stage === "pos_venda") {
       // Computa o estado resultante antes de despachar para poder ler o
       // journeyStatus do contato "depois" da mudança, sem depender de um
       // segundo render.
       const next = crmReducer(state, { type: "MOVE_DEAL", dealId, stage });
-      const deal = state.deals.find((d) => d.id === dealId);
       dispatch({ type: "MOVE_DEAL", dealId, stage });
 
-      const contact = deal ? next.contacts.find((c) => c.id === deal.contactId) : undefined;
+      const contact = next.contacts.find((c) => c.id === deal.contactId);
       if (contact) {
         const label = contact.journeyStatus === "recorrente" ? "recorrente" : "cliente";
         toast.success(`Venda ganha! 🎉 ${contact.name} agora é ${label}.`);
