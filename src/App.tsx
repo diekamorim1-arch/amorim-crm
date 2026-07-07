@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { LoginPage } from "@/pages/LoginPage";
+import { PipelinePage } from "@/pages/PipelinePage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import { useCrm } from "@/lib/store";
 
@@ -15,7 +16,7 @@ function App() {
 
       <Route element={<AppShell />}>
         <Route path="/" element={<PlaceholderPage title="Dashboard" task={8} />} />
-        <Route path="/pipeline" element={<PlaceholderPage title="Pipeline" task={4} />} />
+        <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/inbox" element={<PlaceholderPage title="Inbox" task={6} />} />
         <Route path="/inbox/:conversationId" element={<PlaceholderPage title="Inbox" task={6} />} />
         <Route path="/clientes" element={<PlaceholderPage title="Clientes" task={5} />} />

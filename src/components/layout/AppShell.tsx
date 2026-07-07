@@ -32,9 +32,9 @@ export function AppShell() {
   return (
     <div className="flex min-h-svh">
       <Sidebar role={session.role} />
-      <div className="flex min-h-svh flex-1 flex-col">
+      <div className="flex min-h-svh min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 px-4 pt-6 pb-24 md:pb-6">
+        <main className="min-w-0 flex-1 px-4 pt-6 pb-24 md:pb-6">
           <Outlet />
         </main>
       </div>
