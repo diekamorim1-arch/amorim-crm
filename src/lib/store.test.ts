@@ -279,9 +279,20 @@ describe("buildSeed", () => {
       arr.filter((x) => x.tenantId === id).length;
 
     expect(countFor(seed.contacts, tenant1.id)).toBe(14);
-    expect(countFor(seed.deals, tenant1.id)).toBe(12);
     expect(countFor(seed.conversations, tenant1.id)).toBe(8);
     expect(countFor(seed.appointments, tenant1.id)).toBe(10);
+
+    // Board: 2 deals abertos em cada estágio ativo; 2 perdidos; o restante são ganhos (histórico de compras).
+    const tenant1Deals = seed.deals.filter((d) => d.tenantId === tenant1.id);
+    const openByStage = (stage: string) =>
+      tenant1Deals.filter((d) => d.outcome === "aberto" && d.stage === stage).length;
+    expect(openByStage("novo_lead")).toBe(2);
+    expect(openByStage("em_atendimento")).toBe(2);
+    expect(openByStage("negociacao")).toBe(2);
+    expect(openByStage("fechamento")).toBe(2);
+    expect(tenant1Deals.filter((d) => d.outcome === "perdido").length).toBe(2);
+    expect(tenant1Deals.filter((d) => d.outcome === "ganho").length).toBe(13);
+    expect(tenant1Deals.length).toBe(23);
 
     expect(countFor(seed.contacts, tenant2.id)).toBe(4);
     expect(countFor(seed.deals, tenant2.id)).toBe(3);
@@ -294,6 +305,13 @@ describe("buildSeed", () => {
     expect(leads.length).toBe(5);
     expect(clientes.length).toBe(5);
     expect(recorrentes.length).toBe(4);
+
+    // journeyStatus lastreado no histórico de compras: lead = 0 ganhos, cliente = 1, recorrente ≥ 2
+    const wonCountFor = (contactId: string) =>
+      seed.deals.filter((d) => d.contactId === contactId && d.outcome === "ganho").length;
+    for (const lead of leads) expect(wonCountFor(lead.id)).toBe(0);
+    for (const cliente of clientes) expect(wonCountFor(cliente.id)).toBe(1);
+    for (const recorrente of recorrentes) expect(wonCountFor(recorrente.id)).toBeGreaterThanOrEqual(2);
 
     const unassignedUnread = seed.conversations.filter(
       (c) => c.tenantId === tenant1.id && c.assigneeId === null && c.unread > 0,

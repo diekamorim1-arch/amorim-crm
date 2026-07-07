@@ -84,7 +84,7 @@ export function isStale(deal: Deal): boolean {
 }
 
 export function contactById(state: CrmState, id: string): Contact | undefined {
-  return state.contacts.find((c) => c.id === id);
+  return tenantScope(state).contacts.find((c) => c.id === id);
 }
 
 export function conversationWithContact(state: CrmState, contactId: string): Conversation | undefined {
@@ -143,10 +143,11 @@ export function dashboardMetrics(state: CrmState): {
   const originsPresent = Array.from(new Set(contacts.map((c) => c.origin)));
   const byChannel = originsPresent.map((origin) => {
     const channelContacts = contacts.filter((c) => c.origin === origin);
+    const channelContactIds = new Set(channelContacts.map((c) => c.id));
     return {
       origin,
       total: channelContacts.length,
-      won: channelContacts.filter((c) => c.journeyStatus !== "lead").length,
+      won: deals.filter((d) => d.outcome === "ganho" && channelContactIds.has(d.contactId)).length,
     };
   });
 
