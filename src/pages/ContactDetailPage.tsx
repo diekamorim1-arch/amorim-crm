@@ -11,6 +11,7 @@ import { AppointmentDialog } from "@/components/agenda/AppointmentDialog";
 import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
 import { ContactFormDialog } from "@/components/contacts/ContactFormDialog";
 import { JourneyBadge } from "@/components/contacts/JourneyBadge";
+import { EditDealDialog } from "@/components/pipeline/EditDealDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import {
   STAGE_LABELS,
 } from "@/lib/constants";
 import { brl, relativeTime } from "@/lib/format";
-import { contactById, conversationWithContact, tenantScope } from "@/lib/selectors";
+import { contactById, conversationWithContact, currentUser, tenantScope } from "@/lib/selectors";
 import { newId, useCrm } from "@/lib/store";
 import type { Appointment, Conversation, Deal } from "@/lib/types";
 
@@ -44,6 +45,9 @@ export function ContactDetailPage() {
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [apptOpen, setApptOpen] = useState(false);
+  const [editDealTarget, setEditDealTarget] = useState<Deal | null>(null);
+
+  const isGestor = currentUser(state)?.role === "gestor";
 
   const contact = contactId ? contactById(state, contactId) : undefined;
 
@@ -154,7 +158,7 @@ export function ContactDetailPage() {
         </TabsContent>
 
         <TabsContent value="negocios" className="mt-4">
-          <NegociosSection deals={openDeals} />
+          <NegociosSection deals={openDeals} onEditDeal={isGestor ? setEditDealTarget : undefined} />
         </TabsContent>
 
         <TabsContent value="compras" className="mt-4">
@@ -176,6 +180,11 @@ export function ContactDetailPage() {
         dealId={openDeals[0]?.id}
         open={apptOpen}
         onOpenChange={setApptOpen}
+      />
+      <EditDealDialog
+        deal={editDealTarget}
+        open={!!editDealTarget}
+        onOpenChange={(open) => !open && setEditDealTarget(null)}
       />
     </div>
   );
@@ -231,7 +240,7 @@ function DadosSection({
   );
 }
 
-function NegociosSection({ deals }: { deals: Deal[] }) {
+function NegociosSection({ deals, onEditDeal }: { deals: Deal[]; onEditDeal?: (deal: Deal) => void }) {
   if (deals.length === 0) {
     return <EmptyState icon={Wallet} title="Nenhum negócio em aberto no momento" />;
   }
@@ -252,6 +261,16 @@ function NegociosSection({ deals }: { deals: Deal[] }) {
           <div className="flex items-center gap-3">
             <Badge variant="outline">{STAGE_LABELS[deal.stage]}</Badge>
             <span className="font-mono text-sm font-semibold tabular-nums text-foreground">{brl(deal.value)}</span>
+            {onEditDeal && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Editar negócio"
+                onClick={() => onEditDeal(deal)}
+              >
+                <Pencil />
+              </Button>
+            )}
           </div>
         </div>
       ))}

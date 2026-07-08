@@ -20,6 +20,7 @@ interface KanbanColumnProps {
   onMarkLost: (deal: Deal) => void;
   onOpenFicha: (contactId: string) => void;
   onOpenConversation: (contactId: string) => void;
+  onEditDeal?: (deal: Deal) => void;
   footer?: ReactNode;
 }
 
@@ -33,6 +34,7 @@ export function KanbanColumn({
   onMarkLost,
   onOpenFicha,
   onOpenConversation,
+  onEditDeal,
   footer,
 }: KanbanColumnProps) {
   const [dragOver, setDragOver] = useState(false);
@@ -79,6 +81,7 @@ export function KanbanColumn({
             onMarkLost={onMarkLost}
             onOpenFicha={onOpenFicha}
             onOpenConversation={onOpenConversation}
+            onEditDeal={onEditDeal}
           />
         ))}
       </div>

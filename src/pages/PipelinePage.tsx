@@ -7,12 +7,13 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddLeadDialog, type AddLeadFormValues } from "@/components/pipeline/AddLeadDialog";
+import { EditDealDialog } from "@/components/pipeline/EditDealDialog";
 import { KanbanColumn } from "@/components/pipeline/KanbanColumn";
 import { LostDealsSheet } from "@/components/pipeline/LostDealsSheet";
 import { MarkLostDialog } from "@/components/pipeline/MarkLostDialog";
 import { Button } from "@/components/ui/button";
 import { PRODUCT_LINE_LABELS, STAGES } from "@/lib/constants";
-import { contactById, conversationWithContact, dealsByStage, lostDeals, tenantScope } from "@/lib/selectors";
+import { contactById, conversationWithContact, currentUser, dealsByStage, lostDeals, tenantScope } from "@/lib/selectors";
 import { crmReducer, newId, useCrm } from "@/lib/store";
 import type { Activity, Contact, Conversation, Deal, LossReason, Stage } from "@/lib/types";
 
@@ -30,6 +31,9 @@ export function PipelinePage() {
   const [addOpen, setAddOpen] = useState(false);
   const [lostOpen, setLostOpen] = useState(false);
   const [lostDialogDeal, setLostDialogDeal] = useState<Deal | null>(null);
+  const [editDealTarget, setEditDealTarget] = useState<Deal | null>(null);
+
+  const isGestor = currentUser(state)?.role === "gestor";
 
   const grouped = dealsByStage(state);
   const posVendaAll = grouped.pos_venda;
@@ -185,6 +189,7 @@ export function PipelinePage() {
             onMarkLost={setLostDialogDeal}
             onOpenFicha={handleOpenFicha}
             onOpenConversation={handleOpenConversation}
+            onEditDeal={isGestor ? setEditDealTarget : undefined}
             footer={
               stage.id === "pos_venda" && olderWonCount > 0 ? (
                 <p className="text-xs text-muted-foreground">
@@ -214,6 +219,12 @@ export function PipelinePage() {
       />
 
       <LostDealsSheet open={lostOpen} onOpenChange={setLostOpen} deals={lostDeals(state)} />
+
+      <EditDealDialog
+        deal={editDealTarget}
+        open={!!editDealTarget}
+        onOpenChange={(open) => !open && setEditDealTarget(null)}
+      />
     </div>
   );
 }

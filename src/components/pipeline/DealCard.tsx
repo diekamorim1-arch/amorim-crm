@@ -26,6 +26,7 @@ interface DealCardProps {
   onMarkLost: (deal: Deal) => void;
   onOpenFicha: (contactId: string) => void;
   onOpenConversation: (contactId: string) => void;
+  onEditDeal?: (deal: Deal) => void;
 }
 
 function initialsOf(name: string): string {
@@ -39,7 +40,15 @@ function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
 }
 
-export function DealCard({ deal, contact, onMove, onMarkLost, onOpenFicha, onOpenConversation }: DealCardProps) {
+export function DealCard({
+  deal,
+  contact,
+  onMove,
+  onMarkLost,
+  onOpenFicha,
+  onOpenConversation,
+  onEditDeal,
+}: DealCardProps) {
   const stale = isStale(deal);
 
   return (
@@ -80,6 +89,12 @@ export function DealCard({ deal, contact, onMove, onMarkLost, onOpenFicha, onOpe
               Abrir conversa
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            {onEditDeal && (
+              <>
+                <DropdownMenuItem onSelect={() => onEditDeal(deal)}>Editar negócio</DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem variant="destructive" onSelect={() => onMarkLost(deal)}>
               Marcar como perdido
             </DropdownMenuItem>
