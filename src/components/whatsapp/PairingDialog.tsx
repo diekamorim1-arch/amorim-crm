@@ -1,10 +1,18 @@
-// PairingDialog — simula o fluxo de pareamento do WhatsApp Web: ao abrir, a
-// conexão entra em "pareando" imediatamente; após 4s conecta sozinha (check
-// verde animado + toast) e o diálogo fecha ~1,5s depois. Se ninguém "escanear"
-// em 20s, o código expira e oferece um botão para gerar um novo.
+// PairingDialog — simula o fluxo de pareamento do WhatsApp Web.
 //
-// Os timers de pareamento (conectar em 4s, expirar em 20s) vivem só aqui —
-// nenhum outro componente precisa saber deles.
+// Há dois casos ao abrir:
+// - Pareamento novo (conexão "desconectado" quando o diálogo abre): entra em
+//   "pareando" imediatamente e conecta sozinha em 4s (check verde + toast),
+//   fechando ~1,5s depois. Esse é o caminho padrão do botão "Conectar".
+// - Pareamento retomado (a conexão já estava em "pareando" quando o diálogo
+//   abriu — ex.: o usuário fechou o diálogo anterior, navegou para outra
+//   página ou recarregou antes de conectar, perdendo os timers em memória):
+//   não reinicia o "conectar em 4s" sozinho — só arma os 20s de expiração.
+//   Se nada acontecer nesse tempo, mostra "Código expirado"; "Gerar novo
+//   código" reinicia do zero, equivalente a um novo pareamento (4s + 1,5s).
+//
+// Os timers de pareamento vivem só aqui — nenhum outro componente precisa
+// saber deles.
 
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
@@ -49,19 +57,15 @@ export function PairingDialog({ open, onOpenChange, connection, ownerName, dispa
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const expireTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  useEffect(() => {
-    function clearTimers() {
-      clearTimeout(connectTimer.current);
-      clearTimeout(closeTimer.current);
-      clearTimeout(expireTimer.current);
-    }
+  function clearTimers() {
+    clearTimeout(connectTimer.current);
+    clearTimeout(closeTimer.current);
+    clearTimeout(expireTimer.current);
+  }
 
-    if (!open) {
-      clearTimers();
-      return;
-    }
-
-    setConnected(false);
+  /** Pareamento novo (ou "Gerar novo código"): conecta sozinho em 4s + fecha em +1,5s. */
+  function startFreshPairing() {
+    clearTimers();
     setExpired(false);
     dispatch({ type: "SET_CONNECTION_STATUS", connectionId: connection.id, status: "pareando" });
 
@@ -73,12 +77,28 @@ export function PairingDialog({ open, onOpenChange, connection, ownerName, dispa
         onOpenChange(false);
       }, CLOSE_DELAY_MS);
     }, CONNECT_DELAY_MS);
+  }
 
-    expireTimer.current = setTimeout(() => {
-      setExpired(true);
-    }, EXPIRE_DELAY_MS);
+  useEffect(() => {
+    if (!open) {
+      clearTimers();
+      return;
+    }
+
+    setConnected(false);
+    setExpired(false);
+
+    if (connection.status === "pareando") {
+      // Pareamento retomado: os timers da tentativa anterior já se perderam
+      // (diálogo fechado, navegação, reload) — não reconecta sozinho, só
+      // arma a expiração de 20s.
+      expireTimer.current = setTimeout(() => setExpired(true), EXPIRE_DELAY_MS);
+    } else {
+      startFreshPairing();
+    }
 
     return clearTimers;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, connection.id, dispatch, ownerName, onOpenChange]);
 
   function handleOpenChange(next: boolean) {
@@ -91,12 +111,8 @@ export function PairingDialog({ open, onOpenChange, connection, ownerName, dispa
   }
 
   function handleRegenerate() {
-    clearTimeout(expireTimer.current);
-    setExpired(false);
-    expireTimer.current = setTimeout(() => setExpired(true), EXPIRE_DELAY_MS);
-    // Já estamos em "pareando" — este dispatch é um no-op no status, só
-    // reafirma a intenção (consistente com o contrato de SET_CONNECTION_STATUS).
-    dispatch({ type: "SET_CONNECTION_STATUS", connectionId: connection.id, status: "pareando" });
+    // Equivalente a um novo pareamento: reinicia o ciclo de 4s + 1,5s.
+    startFreshPairing();
   }
 
   return (
