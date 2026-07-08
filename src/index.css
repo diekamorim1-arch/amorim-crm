@@ -39,6 +39,14 @@
   --bubble-sent: #d9fdd3;
   --bubble-sent-foreground: #111b21;
 
+  /* Tipos de agendamento (Agenda) — entrega usa --primary e follow_up usa
+     --attention; estas duas são exclusivas da agenda, escolhidas para não
+     ler como o azul-Apple (ver docs/design-direction.md). */
+  --appointment-atendimento: #7c5cbf;
+  --appointment-atendimento-foreground: #ffffff;
+  --appointment-retirada: #3f7268;
+  --appointment-retirada-foreground: #ffffff;
+
   --chart-1: #a16a28;
   --chart-2: #1faf5f;
   --chart-3: #d97706;
@@ -86,6 +94,11 @@
   --bubble-sent: #005c4b;
   --bubble-sent-foreground: #e9edef;
 
+  --appointment-atendimento: #a48add;
+  --appointment-atendimento-foreground: #1c1c1e;
+  --appointment-retirada: #6ba79a;
+  --appointment-retirada-foreground: #111b21;
+
   --chart-1: #d9a45b;
   --chart-2: #2bc46f;
   --chart-3: #d97706;
@@ -130,6 +143,11 @@
   --color-whatsapp: var(--whatsapp);
   --color-bubble-sent: var(--bubble-sent);
   --color-bubble-sent-foreground: var(--bubble-sent-foreground);
+
+  --color-appointment-atendimento: var(--appointment-atendimento);
+  --color-appointment-atendimento-foreground: var(--appointment-atendimento-foreground);
+  --color-appointment-retirada: var(--appointment-retirada);
+  --color-appointment-retirada-foreground: var(--appointment-retirada-foreground);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);

@@ -126,6 +126,14 @@ export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appoi
     () => deals.filter((d) => d.contactId === form.contactId && d.outcome === "aberto"),
     [deals, form.contactId],
   );
+  // Se o agendamento já tinha um negócio vinculado que não está mais aberto
+  // (ganho/perdido desde a criação), mantém ele visível no select — em vez
+  // de escondê-lo silenciosamente enquanto o id continua sendo salvo.
+  const currentLinkedDeal =
+    form.dealId !== NO_DEAL && !openDealsForContact.some((d) => d.id === form.dealId)
+      ? deals.find((d) => d.id === form.dealId)
+      : undefined;
+  const dealSelectOptions = currentLinkedDeal ? [...openDealsForContact, currentLinkedDeal] : openDealsForContact;
 
   function handleOpenChange(next: boolean) {
     if (!next) {
@@ -293,16 +301,17 @@ export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appoi
             <Select
               value={form.dealId}
               onValueChange={(v) => update("dealId", v)}
-              disabled={!form.contactId || openDealsForContact.length === 0}
+              disabled={!form.contactId || dealSelectOptions.length === 0}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Nenhum" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NO_DEAL}>Nenhum</SelectItem>
-                {openDealsForContact.map((deal) => (
+                {dealSelectOptions.map((deal) => (
                   <SelectItem key={deal.id} value={deal.id}>
                     {deal.products}
+                    {deal.outcome !== "aberto" && " (encerrado)"}
                   </SelectItem>
                 ))}
               </SelectContent>

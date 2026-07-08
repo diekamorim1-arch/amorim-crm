@@ -57,7 +57,9 @@ export function AgendaPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">Agenda</h1>
-          <p className="font-mono text-sm tabular-nums text-muted-foreground">{weekRangeLabel(weekStart)}</p>
+          <p className="font-mono text-sm tabular-nums text-muted-foreground">
+            {view === "semana" ? weekRangeLabel(weekStart) : today.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -67,6 +69,7 @@ export function AgendaPage() {
               variant="ghost"
               size="icon-sm"
               onClick={() => setWeekStart((w) => addWeeks(w, -1))}
+              disabled={view !== "semana"}
               aria-label="Semana anterior"
             >
               <ChevronLeft className="size-4" />
@@ -76,6 +79,7 @@ export function AgendaPage() {
               variant="ghost"
               size="sm"
               onClick={() => setWeekStart(getWeekStart(new Date()))}
+              disabled={view !== "semana"}
             >
               Hoje
             </Button>
@@ -84,6 +88,7 @@ export function AgendaPage() {
               variant="ghost"
               size="icon-sm"
               onClick={() => setWeekStart((w) => addWeeks(w, 1))}
+              disabled={view !== "semana"}
               aria-label="Próxima semana"
             >
               <ChevronRight className="size-4" />
