@@ -7,7 +7,7 @@ import { MobileBottomNav, Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { useCrm } from "@/lib/store";
 
-const ATENDENTE_ALLOWED_BASES = ["/pipeline", "/inbox", "/clientes", "/agenda"];
+const ATENDENTE_ALLOWED_BASES = ["/pipeline", "/inbox", "/clientes", "/agenda", "/whatsapp"];
 
 export function AppShell() {
   const { state } = useCrm();

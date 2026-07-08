@@ -37,13 +37,13 @@ const ATENDENTE_ITEMS: NavItem[] = [
   { to: "/inbox", label: "Inbox", icon: InboxIcon },
   { to: "/clientes", label: "Clientes", icon: Users },
   { to: "/agenda", label: "Agenda", icon: CalendarDays },
+  { to: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
 ];
 
 const GESTOR_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   ...ATENDENTE_ITEMS,
   { to: "/config", label: "Configurações", icon: Settings },
-  { to: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [{ to: "/admin", label: "Lojas", icon: Store }];

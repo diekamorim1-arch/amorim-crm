@@ -10,6 +10,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { WhatsAppPage } from "@/pages/WhatsAppPage";
 import { useCrm } from "@/lib/store";
 
 function App() {
@@ -29,7 +30,7 @@ function App() {
         <Route path="/clientes/:contactId" element={<ContactDetailPage />} />
         <Route path="/agenda" element={<AgendaPage />} />
         <Route path="/config" element={<SettingsPage />} />
-        <Route path="/whatsapp" element={<PlaceholderPage title="WhatsApp" task={10} />} />
+        <Route path="/whatsapp" element={<WhatsAppPage />} />
         <Route path="/admin" element={<PlaceholderPage title="Admin do SaaS" task={11} />} />
       </Route>
 
