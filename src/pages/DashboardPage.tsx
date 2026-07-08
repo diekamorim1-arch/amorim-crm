@@ -74,6 +74,11 @@ export function DashboardPage() {
           value={`${metrics.conversionRate.toFixed(1)}%`}
           valueClassName="font-display"
         />
+        <MetricCard
+          label="Lucro líquido no mês"
+          value={brl(metrics.netProfitMonth)}
+          valueClassName="font-mono tabular-nums text-xl"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
