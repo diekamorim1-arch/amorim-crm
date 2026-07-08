@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { ContactDetailPage } from "@/pages/ContactDetailPage";
+import { ContactsPage } from "@/pages/ContactsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
@@ -19,8 +21,8 @@ function App() {
         <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/inbox" element={<PlaceholderPage title="Inbox" task={6} />} />
         <Route path="/inbox/:conversationId" element={<PlaceholderPage title="Inbox" task={6} />} />
-        <Route path="/clientes" element={<PlaceholderPage title="Clientes" task={5} />} />
-        <Route path="/clientes/:contactId" element={<PlaceholderPage title="Cliente" task={5} />} />
+        <Route path="/clientes" element={<ContactsPage />} />
+        <Route path="/clientes/:contactId" element={<ContactDetailPage />} />
         <Route path="/agenda" element={<PlaceholderPage title="Agenda" task={7} />} />
         <Route path="/config" element={<PlaceholderPage title="Configurações" task={9} />} />
         <Route path="/whatsapp" element={<PlaceholderPage title="WhatsApp" task={10} />} />
