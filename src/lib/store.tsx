@@ -29,6 +29,11 @@ export function newId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
 }
 
+// Re-exportado para consumidores que despacham ações fora de componentes
+// React (ex.: fakeReply.ts) e precisam tipar seu próprio `dispatch` recebido
+// por parâmetro sem importar diretamente de "react".
+export type { Dispatch };
+
 export type CrmAction =
   | { type: "LOGIN"; userId: string }
   | { type: "LOGOUT" }
