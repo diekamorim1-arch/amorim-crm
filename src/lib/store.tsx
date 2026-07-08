@@ -78,7 +78,13 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
     case "ENTER_TENANT_AS_GESTOR": {
       if (!state.session) return state;
-      return { ...state, session: { ...state.session, tenantId: action.tenantId } };
+      // A sessão vira "gestor" daquele tenant — não basta trocar o tenantId:
+      // Sidebar/MobileBottomNav e o guard do AppShell decidem menu/rotas
+      // olhando só para `role`. O `userId` original (admin_saas) é mantido de
+      // propósito: "Voltar ao painel" apenas dá SWITCH_SESSION nesse mesmo
+      // userId, que re-deriva a sessão original a partir do User (admin_saas,
+      // sem tenant) — sem precisar de um campo extra para lembrar de onde veio.
+      return { ...state, session: { ...state.session, tenantId: action.tenantId, role: "gestor" } };
     }
 
     case "MOVE_DEAL": {

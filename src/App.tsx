@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { AdminTenantsPage } from "@/pages/AdminTenantsPage";
 import { AgendaPage } from "@/pages/AgendaPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { ContactsPage } from "@/pages/ContactsPage";
@@ -8,7 +9,6 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
-import { PlaceholderPage } from "@/pages/PlaceholderPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { WhatsAppPage } from "@/pages/WhatsAppPage";
 import { useCrm } from "@/lib/store";
@@ -31,7 +31,7 @@ function App() {
         <Route path="/agenda" element={<AgendaPage />} />
         <Route path="/config" element={<SettingsPage />} />
         <Route path="/whatsapp" element={<WhatsAppPage />} />
-        <Route path="/admin" element={<PlaceholderPage title="Admin do SaaS" task={11} />} />
+        <Route path="/admin" element={<AdminTenantsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
