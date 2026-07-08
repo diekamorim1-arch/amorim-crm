@@ -78,6 +78,11 @@ export const ROLE_LABELS: Record<Role, string> = {
   admin_saas: "Admin SaaS",
 };
 
+export const PLAN_LABELS: Record<"starter" | "pro", string> = {
+  starter: "Starter",
+  pro: "Pro",
+};
+
 export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
   agendado: "Agendado",
   concluido: "Concluído",

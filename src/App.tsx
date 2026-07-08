@@ -9,6 +9,7 @@ import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { useCrm } from "@/lib/store";
 
 function App() {
@@ -27,7 +28,7 @@ function App() {
         <Route path="/clientes" element={<ContactsPage />} />
         <Route path="/clientes/:contactId" element={<ContactDetailPage />} />
         <Route path="/agenda" element={<AgendaPage />} />
-        <Route path="/config" element={<PlaceholderPage title="Configurações" task={9} />} />
+        <Route path="/config" element={<SettingsPage />} />
         <Route path="/whatsapp" element={<PlaceholderPage title="WhatsApp" task={10} />} />
         <Route path="/admin" element={<PlaceholderPage title="Admin do SaaS" task={11} />} />
       </Route>
