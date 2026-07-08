@@ -134,7 +134,7 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
                     {lastMessage ? lastMessage.text : "Sem mensagens ainda"}
                   </span>
                   {conversation.unread > 0 && (
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-whatsapp text-[11px] font-medium text-white">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-whatsapp text-[11px] font-medium text-success-foreground">
                       {conversation.unread}
                     </span>
                   )}

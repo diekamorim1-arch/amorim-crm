@@ -172,6 +172,19 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
         createdAt: now,
       };
 
+      // Quando o cliente responde, simulamos que ele leu as mensagens que
+      // enviamos antes disso nesta conversa: promove os ticks de
+      // "enviada"/"entregue" para "lida" (✓✓ com tingimento) antes de
+      // anexar a nova mensagem recebida.
+      const priorMessages =
+        direction === "in"
+          ? state.messages.map((m) =>
+              m.conversationId === conversation.id && m.direction === "out" && m.status !== "lida"
+                ? { ...m, status: "lida" as const }
+                : m,
+            )
+          : state.messages;
+
       const conversations = state.conversations.map((c) =>
         c.id === conversation.id ? { ...c, unread: direction === "in" ? c.unread + 1 : c.unread } : c,
       );
@@ -192,7 +205,7 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
       return {
         ...state,
-        messages: [...state.messages, message],
+        messages: [...priorMessages, message],
         conversations,
         contacts,
         activities: [...state.activities, activity],
