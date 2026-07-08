@@ -10,6 +10,9 @@ import type {
   Message,
   Origin,
   Stage,
+  Supplier,
+  SupplierPriceChange,
+  SupplierProduct,
   User,
   WhatsAppConnection,
 } from "./types";
@@ -26,6 +29,9 @@ export function tenantScope(state: CrmState): {
   activities: Activity[];
   connections: WhatsAppConnection[];
   users: User[];
+  suppliers: Supplier[];
+  supplierProducts: SupplierProduct[];
+  supplierPriceChanges: SupplierPriceChange[];
 } {
   const tenantId = state.session?.tenantId;
   if (!tenantId) {
@@ -38,6 +44,9 @@ export function tenantScope(state: CrmState): {
       activities: [],
       connections: [],
       users: [],
+      suppliers: [],
+      supplierProducts: [],
+      supplierPriceChanges: [],
     };
   }
 
@@ -50,6 +59,9 @@ export function tenantScope(state: CrmState): {
     activities: state.activities.filter((a) => a.tenantId === tenantId),
     connections: state.connections.filter((c) => c.tenantId === tenantId),
     users: state.users.filter((u) => u.tenantId === tenantId),
+    suppliers: state.suppliers.filter((s) => s.tenantId === tenantId),
+    supplierProducts: state.supplierProducts.filter((p) => p.tenantId === tenantId),
+    supplierPriceChanges: state.supplierPriceChanges.filter((p) => p.tenantId === tenantId),
   };
 }
 
@@ -96,11 +108,19 @@ function isSameMonth(iso: string, reference: Date): boolean {
   return d.getFullYear() === reference.getFullYear() && d.getMonth() === reference.getMonth();
 }
 
+/** Histórico de preços de um produto de fornecedor, mais recente primeiro. */
+export function priceHistoryForProduct(state: CrmState, productId: string): SupplierPriceChange[] {
+  return tenantScope(state)
+    .supplierPriceChanges.filter((c) => c.supplierProductId === productId)
+    .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime());
+}
+
 export function dashboardMetrics(state: CrmState): {
   newLeadsMonth: number;
   inNegotiationValue: number;
   revenueMonth: number;
   revenuePrevMonth: number;
+  netProfitMonth: number;
   conversionRate: number;
   funnelCounts: { stage: Stage; count: number; value: number }[];
   byChannel: { origin: Origin; total: number; won: number }[];
@@ -124,6 +144,9 @@ export function dashboardMetrics(state: CrmState): {
   const revenuePrevMonth = wonDeals
     .filter((d) => isSameMonth(d.stageChangedAt, prevMonthRef))
     .reduce((sum, d) => sum + d.value, 0);
+  const netProfitMonth = wonDeals
+    .filter((d) => isSameMonth(d.stageChangedAt, now))
+    .reduce((sum, d) => sum + (d.value - (d.supplierValue ?? 0) - (d.giftValue ?? 0)), 0);
 
   const lostCount = deals.filter((d) => d.outcome === "perdido").length;
   const wonCount = wonDeals.length;
@@ -168,6 +191,7 @@ export function dashboardMetrics(state: CrmState): {
     inNegotiationValue,
     revenueMonth,
     revenuePrevMonth,
+    netProfitMonth,
     conversionRate,
     funnelCounts,
     byChannel,

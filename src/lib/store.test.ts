@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { daysAgo } from "./format";
 import { crmReducer } from "./store";
 import { buildSeed } from "./seed";
-import { currentUser, dashboardMetrics, dealsByStage, isStale, lostDeals, tenantScope } from "./selectors";
-import type { Contact, Conversation, CrmState, Deal, Tenant, User } from "./types";
+import { currentUser, dashboardMetrics, dealsByStage, isStale, lostDeals, priceHistoryForProduct, tenantScope } from "./selectors";
+import type { Contact, Conversation, CrmState, Deal, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
 
 function baseState(): CrmState {
   const now = new Date().toISOString();
@@ -78,6 +78,9 @@ function baseState(): CrmState {
     appointments: [],
     activities: [],
     connections: [],
+    suppliers: [],
+    supplierProducts: [],
+    supplierPriceChanges: [],
     session: { userId: owner.id, tenantId: tenant.id, role: "atendente" },
   };
 }
@@ -254,6 +257,152 @@ describe("crmReducer — ENTER_TENANT_AS_GESTOR (impersonação)", () => {
 
     const restored = crmReducer(impersonated, { type: "SWITCH_SESSION", userId: admin.id });
     expect(restored.session).toEqual({ userId: admin.id, tenantId: "", role: "admin_saas" });
+  });
+});
+
+describe("crmReducer — fornecedores e custos", () => {
+  function stateWithSupplier(): { state: CrmState; supplier: Supplier; product: SupplierProduct } {
+    const base = baseState();
+    const supplier: Supplier = {
+      id: "supplier_1",
+      tenantId: base.tenants[0].id,
+      name: "Import Fácil",
+      whatsapp: "+55 11 98888-0000",
+      createdAt: new Date().toISOString(),
+    };
+    const product: SupplierProduct = {
+      id: "product_1",
+      tenantId: base.tenants[0].id,
+      supplierId: supplier.id,
+      name: "iPhone 15 128GB",
+      currentPrice: 3800,
+      // Backdatado (mesmo padrão de `deal.stageChangedAt` em baseState()):
+      // evita flakiness na asserção `updatedAt` não igual a `now` do reducer,
+      // que pode cair no mesmo milissegundo se não houver essa folga.
+      updatedAt: new Date(Date.now() - 60_000).toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      state: { ...base, suppliers: [supplier], supplierProducts: [product], supplierPriceChanges: [] },
+      supplier,
+      product,
+    };
+  }
+
+  it("ADD_SUPPLIER adiciona um fornecedor", () => {
+    const base = baseState();
+    const supplier: Supplier = {
+      id: "supplier_2",
+      tenantId: base.tenants[0].id,
+      name: "Distribuidora XP",
+      whatsapp: "+55 11 97777-0000",
+      createdAt: new Date().toISOString(),
+    };
+    const next = crmReducer(base, { type: "ADD_SUPPLIER", supplier });
+    expect(next.suppliers).toContainEqual(supplier);
+  });
+
+  it("UPDATE_SUPPLIER_PRODUCT_PRICE cria uma SupplierPriceChange e atualiza currentPrice/updatedAt", () => {
+    const { state, product } = stateWithSupplier();
+    const next = crmReducer(state, {
+      type: "UPDATE_SUPPLIER_PRODUCT_PRICE",
+      productId: product.id,
+      price: 3950,
+    });
+
+    const updated = next.supplierProducts.find((p) => p.id === product.id);
+    expect(updated?.currentPrice).toBe(3950);
+    expect(updated?.updatedAt).not.toBe(product.updatedAt);
+
+    expect(next.supplierPriceChanges).toHaveLength(1);
+    expect(next.supplierPriceChanges[0]).toMatchObject({
+      supplierProductId: product.id,
+      price: 3950,
+    });
+  });
+
+  it("UPDATE_DEAL_FINANCIALS seta supplierProductId/supplierValue/giftValue sem mexer no estágio", () => {
+    const { state, product } = stateWithSupplier();
+    const dealId = state.deals[0].id;
+    const originalStage = state.deals[0].stage;
+
+    const next = crmReducer(state, {
+      type: "UPDATE_DEAL_FINANCIALS",
+      dealId,
+      supplierProductId: product.id,
+      supplierValue: 3800,
+      giftValue: 150,
+    });
+
+    const updated = next.deals.find((d) => d.id === dealId);
+    expect(updated?.supplierProductId).toBe(product.id);
+    expect(updated?.supplierValue).toBe(3800);
+    expect(updated?.giftValue).toBe(150);
+    expect(updated?.stage).toBe(originalStage);
+  });
+});
+
+describe("priceHistoryForProduct", () => {
+  it("retorna as mudanças de preço do produto, mais recente primeiro", () => {
+    const base = baseState();
+    const supplier: Supplier = {
+      id: "supplier_3",
+      tenantId: base.tenants[0].id,
+      name: "Fornecedor Teste",
+      whatsapp: "+55 11 96666-0000",
+      createdAt: new Date().toISOString(),
+    };
+    const product: SupplierProduct = {
+      id: "product_2",
+      tenantId: base.tenants[0].id,
+      supplierId: supplier.id,
+      name: "AirPods Pro",
+      currentPrice: 1200,
+      updatedAt: daysAgo(0),
+      createdAt: daysAgo(10),
+    };
+    const changes: SupplierPriceChange[] = [
+      { id: "chg_1", tenantId: base.tenants[0].id, supplierProductId: product.id, price: 1100, changedAt: daysAgo(5) },
+      { id: "chg_2", tenantId: base.tenants[0].id, supplierProductId: product.id, price: 1200, changedAt: daysAgo(0) },
+    ];
+    const state: CrmState = {
+      ...base,
+      suppliers: [supplier],
+      supplierProducts: [product],
+      supplierPriceChanges: changes,
+    };
+
+    const history = priceHistoryForProduct(state, product.id);
+    expect(history.map((c) => c.id)).toEqual(["chg_2", "chg_1"]);
+  });
+});
+
+describe("dashboardMetrics — netProfitMonth", () => {
+  it("soma (valor - fornecedor - brindes) só dos deals ganhos no mês", () => {
+    const base = baseState();
+    const wonThisMonth: Deal = {
+      ...base.deals[0],
+      id: "deal_won_1",
+      outcome: "ganho",
+      stage: "pos_venda",
+      value: 5000,
+      supplierValue: 3800,
+      giftValue: 100,
+      stageChangedAt: new Date().toISOString(),
+    };
+    const wonNoCost: Deal = {
+      ...base.deals[0],
+      id: "deal_won_2",
+      outcome: "ganho",
+      stage: "pos_venda",
+      value: 2000,
+      stageChangedAt: new Date().toISOString(),
+    };
+    const state: CrmState = { ...base, deals: [wonThisMonth, wonNoCost] };
+
+    const metrics = dashboardMetrics(state);
+    // (5000 - 3800 - 100) + (2000 - 0 - 0) = 1100 + 2000
+    expect(metrics.netProfitMonth).toBe(3100);
   });
 });
 

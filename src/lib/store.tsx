@@ -21,6 +21,9 @@ import type {
   LossReason,
   Message,
   Stage,
+  Supplier,
+  SupplierPriceChange,
+  SupplierProduct,
   Tenant,
   User,
 } from "./types";
@@ -60,6 +63,11 @@ export type CrmAction =
   | { type: "ADD_TENANT"; tenant: Tenant }
   | { type: "ADD_USER"; user: User }
   | { type: "UPDATE_USER"; user: User }
+  | { type: "ADD_SUPPLIER"; supplier: Supplier }
+  | { type: "UPDATE_SUPPLIER"; supplier: Supplier }
+  | { type: "ADD_SUPPLIER_PRODUCT"; product: SupplierProduct }
+  | { type: "UPDATE_SUPPLIER_PRODUCT_PRICE"; productId: string; price: number }
+  | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; supplierProductId?: string; supplierValue: number; giftValue: number }
   | { type: "RESET_DEMO" };
 
 function countWonDeals(state: CrmState, contactId: string): number {
@@ -285,6 +293,54 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
     case "UPDATE_USER": {
       return { ...state, users: state.users.map((u) => (u.id === action.user.id ? action.user : u)) };
+    }
+
+    case "ADD_SUPPLIER": {
+      return { ...state, suppliers: [...state.suppliers, action.supplier] };
+    }
+
+    case "UPDATE_SUPPLIER": {
+      return { ...state, suppliers: state.suppliers.map((s) => (s.id === action.supplier.id ? action.supplier : s)) };
+    }
+
+    case "ADD_SUPPLIER_PRODUCT": {
+      return { ...state, supplierProducts: [...state.supplierProducts, action.product] };
+    }
+
+    case "UPDATE_SUPPLIER_PRODUCT_PRICE": {
+      const product = state.supplierProducts.find((p) => p.id === action.productId);
+      if (!product) return state;
+      const now = new Date().toISOString();
+
+      const priceChange: SupplierPriceChange = {
+        id: newId("pricechg"),
+        tenantId: product.tenantId,
+        supplierProductId: product.id,
+        price: action.price,
+        changedAt: now,
+      };
+
+      const supplierProducts = state.supplierProducts.map((p) =>
+        p.id === product.id ? { ...p, currentPrice: action.price, updatedAt: now } : p,
+      );
+
+      return { ...state, supplierProducts, supplierPriceChanges: [...state.supplierPriceChanges, priceChange] };
+    }
+
+    case "UPDATE_DEAL_FINANCIALS": {
+      const deal = state.deals.find((d) => d.id === action.dealId);
+      if (!deal) return state;
+      const deals = state.deals.map((d) =>
+        d.id === action.dealId
+          ? {
+              ...d,
+              supplierProductId: action.supplierProductId,
+              supplierValue: action.supplierValue,
+              giftValue: action.giftValue,
+            }
+          : d,
+      );
+      return { ...state, deals };
     }
 
     case "RESET_DEMO": {

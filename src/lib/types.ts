@@ -52,6 +52,35 @@ export interface Contact {
   createdAt: string;
 }
 
+export interface Supplier {
+  id: string;
+  tenantId: string;
+  name: string;
+  whatsapp: string;
+  contactName?: string;
+  email?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SupplierProduct {
+  id: string;
+  tenantId: string;
+  supplierId: string;
+  name: string;
+  currentPrice: number;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface SupplierPriceChange {
+  id: string;
+  tenantId: string;
+  supplierProductId: string;
+  price: number;
+  changedAt: string;
+}
+
 export interface Deal {
   id: string;
   tenantId: string;
@@ -69,6 +98,9 @@ export interface Deal {
   expectedCloseAt?: string;
   stageChangedAt: string;
   createdAt: string;
+  supplierProductId?: string;
+  supplierValue?: number;
+  giftValue?: number;
 }
 
 export interface Conversation {
@@ -143,5 +175,8 @@ export interface CrmState {
   appointments: Appointment[];
   activities: Activity[];
   connections: WhatsAppConnection[];
+  suppliers: Supplier[];
+  supplierProducts: SupplierProduct[];
+  supplierPriceChanges: SupplierPriceChange[];
   session: Session | null;
 }

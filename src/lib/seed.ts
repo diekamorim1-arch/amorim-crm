@@ -1429,6 +1429,9 @@ export function buildSeed(): CrmState {
     appointments: [...tenant1Appointments, ...tenant2Data.appointments],
     activities: [...tenant1Activities, ...tenant2Data.activities],
     connections: tenant1Connections,
+    suppliers: [],
+    supplierProducts: [],
+    supplierPriceChanges: [],
     session: null,
   };
 }
