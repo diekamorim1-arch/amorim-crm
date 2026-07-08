@@ -520,6 +520,26 @@ describe("buildSeed", () => {
     }
   });
 
+  it("fornecedores, produtos e histórico de preço têm FKs válidas", () => {
+    const seed = buildSeed();
+    const supplierIds = new Set(seed.suppliers.map((s) => s.id));
+    const productIds = new Set(seed.supplierProducts.map((p) => p.id));
+
+    for (const product of seed.supplierProducts) {
+      expect(supplierIds.has(product.supplierId)).toBe(true);
+    }
+    for (const change of seed.supplierPriceChanges) {
+      expect(productIds.has(change.supplierProductId)).toBe(true);
+    }
+    for (const deal of seed.deals) {
+      if (deal.supplierProductId) expect(productIds.has(deal.supplierProductId)).toBe(true);
+    }
+
+    // Isolamento: TechStore SP não tem fornecedores.
+    const tenant2 = seed.tenants.find((t) => t.slug !== "amorim-imports")!;
+    expect(seed.suppliers.every((s) => s.tenantId !== tenant2.id)).toBe(true);
+  });
+
   it("respeita as quantidades do briefing por tenant e as marcas de isolamento", () => {
     const seed = buildSeed();
     const tenant1 = seed.tenants.find((t) => t.slug === "amorim-imports")!;

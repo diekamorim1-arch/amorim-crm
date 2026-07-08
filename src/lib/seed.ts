@@ -15,6 +15,9 @@ import type {
   CrmState,
   Deal,
   Message,
+  Supplier,
+  SupplierPriceChange,
+  SupplierProduct,
   Tenant,
   User,
   WhatsAppConnection,
@@ -375,7 +378,12 @@ function buildTenant1Contacts(tenantId: string, u: ReturnType<typeof buildUsers>
 // Tenant 1 — Deals
 // ---------------------------------------------------------------------------
 
-function buildTenant1Deals(tenantId: string, c: ReturnType<typeof buildTenant1Contacts>, u: ReturnType<typeof buildUsers>) {
+function buildTenant1Deals(
+  tenantId: string,
+  c: ReturnType<typeof buildTenant1Contacts>,
+  u: ReturnType<typeof buildUsers>,
+  supplierProductIds: { iphone15: string; iphone15ProMax: string; airpodsPro: string },
+) {
   const brunoDeal: Deal = {
     id: newId("deal"),
     tenantId,
@@ -518,6 +526,9 @@ function buildTenant1Deals(tenantId: string, c: ReturnType<typeof buildTenant1Co
     ownerId: u.samuel.id,
     stageChangedAt: daysAgo(6),
     createdAt: daysAgo(9),
+    supplierProductId: supplierProductIds.iphone15,
+    supplierValue: 3650,
+    giftValue: 150,
   };
   const vanessaDeal: Deal = {
     id: newId("deal"),
@@ -533,6 +544,8 @@ function buildTenant1Deals(tenantId: string, c: ReturnType<typeof buildTenant1Co
     ownerId: u.rafael.id,
     stageChangedAt: daysAgo(10),
     createdAt: daysAgo(13),
+    supplierProductId: supplierProductIds.airpodsPro,
+    supplierValue: 1080,
   };
   const marceloDeal: Deal = {
     id: newId("deal"),
@@ -631,6 +644,9 @@ function buildTenant1Deals(tenantId: string, c: ReturnType<typeof buildTenant1Co
     ownerId: u.juliana.id,
     stageChangedAt: daysAgo(160),
     createdAt: daysAgo(168),
+    supplierProductId: supplierProductIds.iphone15ProMax,
+    supplierValue: 6700,
+    giftValue: 100,
   };
   const marceloHist2: Deal = {
     id: newId("deal"),
@@ -692,6 +708,8 @@ function buildTenant1Deals(tenantId: string, c: ReturnType<typeof buildTenant1Co
     ownerId: u.rafael.id,
     stageChangedAt: daysAgo(128),
     createdAt: daysAgo(134),
+    supplierProductId: supplierProductIds.iphone15,
+    supplierValue: 3650,
   };
   const rodrigoHist2: Deal = {
     id: newId("deal"),
@@ -1181,6 +1199,78 @@ function buildTenant1Connections(tenantId: string, u: ReturnType<typeof buildUse
 }
 
 // ---------------------------------------------------------------------------
+// Tenant 1 — Fornecedores
+// ---------------------------------------------------------------------------
+
+function buildTenant1Suppliers(
+  tenantId: string,
+): { suppliers: Supplier[]; supplierProducts: SupplierProduct[]; supplierPriceChanges: SupplierPriceChange[] } {
+  const importFacil: Supplier = {
+    id: newId("supplier"),
+    tenantId,
+    name: "Import Fácil Distribuidora",
+    whatsapp: "+55 11 98212-4477",
+    contactName: "Rogério Nakamura",
+    email: "rogerio@importfacil.com.br",
+    notes: "Prazo de entrega 3-5 dias úteis. Pedido mínimo de 2 unidades por modelo.",
+    createdAt: daysAgo(240),
+  };
+
+  const techWholesale: Supplier = {
+    id: newId("supplier"),
+    tenantId,
+    name: "TechWholesale Brasil",
+    whatsapp: "+55 11 97455-9012",
+    contactName: "Bianca Ferraz",
+    email: "bianca@techwholesale.com.br",
+    notes: "Pagamento à vista com 3% de desconto. Envia lista de preços toda manhã por WhatsApp.",
+    createdAt: daysAgo(180),
+  };
+
+  function product(supplierId: string, name: string, price: number, createdAgo: number): SupplierProduct {
+    return {
+      id: newId("product"),
+      tenantId,
+      supplierId,
+      name,
+      currentPrice: price,
+      updatedAt: daysAgo(1),
+      createdAt: daysAgo(createdAgo),
+    };
+  }
+
+  const iphone15 = product(importFacil.id, "iPhone 15 128GB", 3800, 220);
+  const iphone15ProMax = product(importFacil.id, "iPhone 15 Pro Max 256GB", 6900, 220);
+  const watchSeries9 = product(importFacil.id, "Apple Watch Series 9 GPS 41mm", 2100, 200);
+
+  const airpodsPro = product(techWholesale.id, "AirPods Pro (2ª geração)", 1150, 160);
+  const ipadAir = product(techWholesale.id, "iPad Air 128GB", 3400, 160);
+  const macbookAirM2 = product(techWholesale.id, "MacBook Air M2 256GB", 6200, 150);
+
+  function priceHistory(p: SupplierProduct, olderPrice: number, olderDaysAgo: number): SupplierPriceChange[] {
+    return [
+      { id: newId("pricechg"), tenantId, supplierProductId: p.id, price: olderPrice, changedAt: daysAgo(olderDaysAgo) },
+      { id: newId("pricechg"), tenantId, supplierProductId: p.id, price: p.currentPrice, changedAt: daysAgo(1) },
+    ];
+  }
+
+  const supplierPriceChanges = [
+    ...priceHistory(iphone15, 3650, 18),
+    ...priceHistory(iphone15ProMax, 6700, 18),
+    ...priceHistory(watchSeries9, 1980, 25),
+    ...priceHistory(airpodsPro, 1080, 12),
+    ...priceHistory(ipadAir, 3250, 12),
+    ...priceHistory(macbookAirM2, 5980, 30),
+  ];
+
+  return {
+    suppliers: [importFacil, techWholesale],
+    supplierProducts: [iphone15, iphone15ProMax, watchSeries9, airpodsPro, ipadAir, macbookAirM2],
+    supplierPriceChanges,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Tenant 2 — TechStore SP
 // ---------------------------------------------------------------------------
 
@@ -1403,9 +1493,16 @@ function buildTenant2(tenantId: string, u: ReturnType<typeof buildUsers>) {
 export function buildSeed(): CrmState {
   const { tenant1, tenant2 } = buildTenants();
   const users = buildUsers(tenant1.id, tenant2.id);
+  const tenant1Suppliers = buildTenant1Suppliers(tenant1.id);
+
+  const supplierProductIds = {
+    iphone15: tenant1Suppliers.supplierProducts[0].id,
+    iphone15ProMax: tenant1Suppliers.supplierProducts[1].id,
+    airpodsPro: tenant1Suppliers.supplierProducts[3].id,
+  };
 
   const tenant1Contacts = buildTenant1Contacts(tenant1.id, users);
-  const tenant1Deals = buildTenant1Deals(tenant1.id, tenant1Contacts, users);
+  const tenant1Deals = buildTenant1Deals(tenant1.id, tenant1Contacts, users, supplierProductIds);
   const tenant1Conversations = buildTenant1Conversations(tenant1.id, tenant1Contacts, users);
   const tenant1Appointments = buildTenant1Appointments(tenant1.id, tenant1Contacts, tenant1Deals, users);
   const tenant1Activities = buildTenant1Activities(
@@ -1429,9 +1526,9 @@ export function buildSeed(): CrmState {
     appointments: [...tenant1Appointments, ...tenant2Data.appointments],
     activities: [...tenant1Activities, ...tenant2Data.activities],
     connections: tenant1Connections,
-    suppliers: [],
-    supplierProducts: [],
-    supplierPriceChanges: [],
+    suppliers: tenant1Suppliers.suppliers,
+    supplierProducts: tenant1Suppliers.supplierProducts,
+    supplierPriceChanges: tenant1Suppliers.supplierPriceChanges,
     session: null,
   };
 }
