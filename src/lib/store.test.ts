@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { daysAgo } from "./format";
 import { crmReducer } from "./store";
 import { buildSeed } from "./seed";
-import { dashboardMetrics, dealsByStage, isStale, lostDeals } from "./selectors";
+import { currentUser, dashboardMetrics, dealsByStage, isStale, lostDeals, tenantScope } from "./selectors";
 import type { Contact, Conversation, CrmState, Deal, Tenant, User } from "./types";
 
 function baseState(): CrmState {
@@ -176,12 +176,69 @@ describe("crmReducer — mensagens", () => {
 });
 
 describe("crmReducer — RESET_DEMO", () => {
-  it("restaura o seed preservando a sessão atual", () => {
-    const state = baseState();
+  // buildSeed() gera todos os ids via crypto.randomUUID() — não são estáveis
+  // entre chamadas. Por isso a asserção antiga (`next.session).toEqual(state.session)`)
+  // só passava porque o reducer fazia um blind copy de `state.session`, sem
+  // validar que aqueles ids ainda existiam na seed nova — exatamente o bug:
+  // currentUser()/tenantScope() ficavam vazios/null depois do reset. As
+  // asserções abaixo re-resolvem por e-mail (estável) e verificam que a tela
+  // não fica em branco.
+  it("re-resolve a sessão de um usuário real da seed por e-mail: currentUser não fica null e tenantScope tem dados", () => {
+    const seed = buildSeed();
+    const tenant1 = seed.tenants.find((t) => t.slug === "amorim-imports")!;
+    const rafael = seed.users.find((u) => u.name === "Rafael Amorim")!;
+    const state: CrmState = { ...seed, session: { userId: rafael.id, tenantId: tenant1.id, role: "gestor" } };
+
     const next = crmReducer(state, { type: "RESET_DEMO" });
-    expect(next.session).toEqual(state.session);
+
+    expect(next.session).not.toBeNull();
+    const me = currentUser(next);
+    expect(me).not.toBeNull();
+    expect(me?.email).toBe(rafael.email);
+    expect(me?.role).toBe(rafael.role);
+
+    expect(tenantScope(next).contacts.length).toBeGreaterThan(0);
     expect(next.tenants.length).toBeGreaterThan(0);
     expect(next.contacts.length).toBeGreaterThan(0);
+  });
+
+  it("sessão cujo e-mail não existe na seed nova (dados sintéticos de teste) cai com segurança para sessão nula, sem quebrar as coleções", () => {
+    // baseState() usa ids e e-mail sintéticos que nunca existirão numa seed
+    // real gerada por buildSeed(). Sem correspondência por e-mail, o reducer
+    // não deve inventar uma sessão inválida: cai para `fresh` (session: null),
+    // que redireciona ao /login com segurança em vez de deixar a UI presa
+    // numa sessão-fantasma.
+    const state = baseState();
+    const next = crmReducer(state, { type: "RESET_DEMO" });
+    expect(next.session).toBeNull();
+    expect(next.tenants.length).toBeGreaterThan(0);
+    expect(next.contacts.length).toBeGreaterThan(0);
+  });
+
+  it("sem sessão, apenas restaura o seed (sem tentar resolver usuário)", () => {
+    const state = { ...baseState(), session: null };
+    const next = crmReducer(state, { type: "RESET_DEMO" });
+    expect(next.session).toBeNull();
+    expect(next.tenants.length).toBeGreaterThan(0);
+  });
+});
+
+describe("crmReducer — ADD_CONVERSATION", () => {
+  it("adiciona uma conversa nova ao state", () => {
+    const state = baseState();
+    const conversation: Conversation = {
+      id: "conv_new",
+      tenantId: state.tenants[0].id,
+      contactId: state.contacts[0].id,
+      assigneeId: null,
+      status: "aberta",
+      unread: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    const next = crmReducer(state, { type: "ADD_CONVERSATION", conversation });
+    expect(next.conversations).toHaveLength(state.conversations.length + 1);
+    expect(next.conversations.some((c) => c.id === "conv_new")).toBe(true);
   });
 });
 

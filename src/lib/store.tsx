@@ -15,6 +15,7 @@ import type {
   Appointment,
   Contact,
   ConnectionStatus,
+  Conversation,
   CrmState,
   Deal,
   LossReason,
@@ -46,6 +47,7 @@ export type CrmAction =
   | { type: "ADD_CONTACT"; contact: Contact }
   | { type: "UPDATE_CONTACT"; contact: Contact }
   | { type: "ADD_DEAL"; deal: Deal }
+  | { type: "ADD_CONVERSATION"; conversation: Conversation }
   | { type: "SEND_MESSAGE"; conversationId: string; text: string; authorId: string }
   | { type: "RECEIVE_MESSAGE"; conversationId: string; text: string }
   | { type: "MARK_CONVERSATION_READ"; conversationId: string }
@@ -159,6 +161,10 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
     case "ADD_DEAL": {
       return { ...state, deals: [...state.deals, action.deal] };
+    }
+
+    case "ADD_CONVERSATION": {
+      return { ...state, conversations: [...state.conversations, action.conversation] };
     }
 
     case "SEND_MESSAGE":
@@ -282,7 +288,19 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
     }
 
     case "RESET_DEMO": {
-      return { ...buildSeed(), session: state.session };
+      const fresh = buildSeed();
+      if (!state.session) return fresh;
+      // buildSeed() gera todos os ids via crypto.randomUUID() — não são
+      // estáveis entre chamadas. Preservar session.userId/tenantId verbatim
+      // apontaria para ids da seed antiga, inexistentes na seed nova, e
+      // deixaria currentUser()/tenantScope() vazios (tela em branco, sem
+      // sessão válida para nem sequer trocar de usuário). Re-resolvemos o
+      // usuário pelo e-mail (literal fixo na seed, estável entre chamadas)
+      // para reconstruir uma sessão válida contra o novo state.
+      const oldUser = state.users.find((u) => u.id === state.session!.userId);
+      const newUser = oldUser ? fresh.users.find((u) => u.email === oldUser.email) : undefined;
+      if (!newUser) return fresh;
+      return { ...fresh, session: { userId: newUser.id, tenantId: newUser.tenantId ?? "", role: newUser.role } };
     }
 
     default:

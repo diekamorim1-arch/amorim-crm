@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { PRODUCT_LINE_LABELS, STAGES } from "@/lib/constants";
 import { contactById, conversationWithContact, dealsByStage, lostDeals, tenantScope } from "@/lib/selectors";
 import { crmReducer, newId, useCrm } from "@/lib/store";
-import type { Activity, Contact, Deal, LossReason, Stage } from "@/lib/types";
+import type { Activity, Contact, Conversation, Deal, LossReason, Stage } from "@/lib/types";
 
 const POS_VENDA_WINDOW_DAYS = 30;
 const POS_VENDA_WINDOW_MS = POS_VENDA_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -79,8 +79,24 @@ export function PipelinePage() {
   }
 
   function handleOpenConversation(contactId: string) {
-    const conversation = conversationWithContact(state, contactId);
-    navigate(conversation ? `/inbox/${conversation.id}` : "/inbox");
+    const existing = conversationWithContact(state, contactId);
+    if (existing) {
+      navigate(`/inbox/${existing.id}`);
+      return;
+    }
+
+    if (!state.session) return;
+    const conversation: Conversation = {
+      id: newId("conv"),
+      tenantId: state.session.tenantId,
+      contactId,
+      assigneeId: null,
+      status: "aberta",
+      unread: 0,
+      createdAt: new Date().toISOString(),
+    };
+    dispatch({ type: "ADD_CONVERSATION", conversation });
+    navigate(`/inbox/${conversation.id}`);
   }
 
   function handleCreateLead(values: AddLeadFormValues) {

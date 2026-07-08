@@ -24,8 +24,8 @@ import {
 } from "@/lib/constants";
 import { brl, relativeTime } from "@/lib/format";
 import { contactById, conversationWithContact, tenantScope } from "@/lib/selectors";
-import { useCrm } from "@/lib/store";
-import type { Appointment, Deal } from "@/lib/types";
+import { newId, useCrm } from "@/lib/store";
+import type { Appointment, Conversation, Deal } from "@/lib/types";
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -40,7 +40,7 @@ function formatDate(iso: string): string {
 
 export function ContactDetailPage() {
   const { contactId } = useParams<{ contactId: string }>();
-  const { state } = useCrm();
+  const { state, dispatch } = useCrm();
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [apptOpen, setApptOpen] = useState(false);
@@ -73,8 +73,24 @@ export function ContactDetailPage() {
   }
 
   function handleOpenConversation() {
-    const conversation = conversationWithContact(state, contact!.id);
-    navigate(conversation ? `/inbox/${conversation.id}` : "/inbox");
+    const existing = conversationWithContact(state, contact!.id);
+    if (existing) {
+      navigate(`/inbox/${existing.id}`);
+      return;
+    }
+
+    if (!state.session) return;
+    const conversation: Conversation = {
+      id: newId("conv"),
+      tenantId: state.session.tenantId,
+      contactId: contact!.id,
+      assigneeId: null,
+      status: "aberta",
+      unread: 0,
+      createdAt: new Date().toISOString(),
+    };
+    dispatch({ type: "ADD_CONVERSATION", conversation });
+    navigate(`/inbox/${conversation.id}`);
   }
 
   return (
