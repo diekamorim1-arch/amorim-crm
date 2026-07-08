@@ -3,8 +3,9 @@
 // ciente (lê o próprio store), assim InboxPage só repassa seleção/navegação.
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Inbox, MessageCircle, PartyPopper, Search, SearchX } from "lucide-react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -78,6 +79,26 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
   const query = search.trim().toLowerCase();
   const filtered = query ? byTab.filter((row) => row.contact.name.toLowerCase().includes(query)) : byTab;
 
+  const emptyState = query
+    ? { icon: SearchX, title: "Nenhuma conversa encontrada", description: "Tente buscar por outro nome." }
+    : tab === "nao_atribuidas"
+      ? {
+          icon: PartyPopper,
+          title: "Nenhuma conversa não atribuída 🎉",
+          description: "Todas as conversas já têm um responsável no momento.",
+        }
+      : tab === "minhas"
+        ? {
+            icon: Inbox,
+            title: "Nenhuma conversa sua ainda",
+            description: "Assuma uma conversa em “Não atribuídas” para começar a atender.",
+          }
+        : {
+            icon: MessageCircle,
+            title: "Nenhuma conversa ainda",
+            description: "As conversas do WhatsApp vão aparecer aqui.",
+          };
+
   return (
     <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-3">
       <h1 className="font-display text-lg font-semibold tracking-tight text-foreground">Inbox</h1>
@@ -103,7 +124,13 @@ export function ConversationList({ selectedId, onSelect }: ConversationListProps
 
       <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
         {filtered.length === 0 && (
-          <p className="px-2 py-8 text-center text-sm text-muted-foreground">Nenhuma conversa encontrada.</p>
+          <EmptyState
+            compact
+            icon={emptyState.icon}
+            title={emptyState.title}
+            description={emptyState.description}
+            className="border-none"
+          />
         )}
 
         {filtered.map(({ conversation, contact, lastMessage }) => {

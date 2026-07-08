@@ -4,8 +4,9 @@
 
 import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
-import { CalendarDays, MessageCircle, Pencil } from "lucide-react";
+import { CalendarDays, CalendarX, MessageCircle, Pencil, ShoppingBag, Wallet } from "lucide-react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { AppointmentDialog } from "@/components/agenda/AppointmentDialog";
 import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
 import { ContactFormDialog } from "@/components/contacts/ContactFormDialog";
@@ -216,11 +217,7 @@ function DadosSection({
 
 function NegociosSection({ deals }: { deals: Deal[] }) {
   if (deals.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border py-10 text-center">
-        <p className="text-sm text-muted-foreground">Nenhum negócio em aberto no momento.</p>
-      </div>
-    );
+    return <EmptyState icon={Wallet} title="Nenhum negócio em aberto no momento" />;
   }
 
   return (
@@ -248,11 +245,7 @@ function NegociosSection({ deals }: { deals: Deal[] }) {
 
 function ComprasSection({ purchases, totalSpent }: { purchases: Deal[]; totalSpent: number }) {
   if (purchases.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border py-10 text-center">
-        <p className="text-sm text-muted-foreground">Este cliente ainda não fechou nenhuma compra.</p>
-      </div>
-    );
+    return <EmptyState icon={ShoppingBag} title="Este cliente ainda não fechou nenhuma compra" />;
   }
 
   return (
@@ -283,9 +276,11 @@ function ComprasSection({ purchases, totalSpent }: { purchases: Deal[]; totalSpe
 function AgendamentosSection({ upcoming, past }: { upcoming: Appointment[]; past: Appointment[] }) {
   if (upcoming.length === 0 && past.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border py-10 text-center">
-        <p className="text-sm text-muted-foreground">Nenhum agendamento para este cliente.</p>
-      </div>
+      <EmptyState
+        icon={CalendarX}
+        title="Nenhum agendamento para este cliente"
+        description="Use o botão “Agendar” acima para criar o primeiro."
+      />
     );
   }
 

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { MessageCircle } from "lucide-react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { ChatPane } from "@/components/inbox/ChatPane";
 import { ContactPanel } from "@/components/inbox/ContactPanel";
 import { ConversationList } from "@/components/inbox/ConversationList";
@@ -101,9 +102,8 @@ export function InboxPage() {
             contextOpen={contextOpen}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            <MessageCircle className="size-8 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Selecione uma conversa para começar.</p>
+          <div className="flex h-full items-center justify-center">
+            <EmptyState icon={MessageCircle} title="Selecione uma conversa para começar" className="border-none" />
           </div>
         )}
       </div>

@@ -2,7 +2,9 @@
 // pai, cuida apenas de exibição, drag-over highlight e soltar (drop) via HTML5 DnD.
 
 import { type ReactNode, useState } from "react";
+import { Inbox } from "lucide-react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { DealCard } from "@/components/pipeline/DealCard";
 import { brl } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -66,7 +68,7 @@ export function KanbanColumn({
 
       <div className="flex flex-col gap-3 overflow-y-auto p-3" style={{ maxHeight: "calc(100vh - 22rem)" }}>
         {deals.length === 0 && (
-          <p className="py-8 text-center text-xs text-muted-foreground">Nenhum negócio aqui.</p>
+          <EmptyState compact icon={Inbox} title="Nenhum negócio aqui" className="border-none py-8" />
         )}
         {deals.map((deal) => (
           <DealCard

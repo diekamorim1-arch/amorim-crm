@@ -5,7 +5,9 @@
 // gráfico "burros" (sem useCrm próprio), para ficarem fáceis de testar depois.
 
 import { useNavigate } from "react-router";
+import { CalendarX } from "lucide-react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { ChannelTable } from "@/components/dashboard/ChannelTable";
 import { FunnelChart } from "@/components/dashboard/FunnelChart";
 import { LossRanking } from "@/components/dashboard/LossRanking";
@@ -128,7 +130,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             {todayAppointments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum agendamento para hoje.</p>
+              <EmptyState compact icon={CalendarX} title="Nenhum agendamento para hoje" />
             ) : (
               <ul className="flex flex-col gap-2">
                 {todayAppointments.map((appt) => {

@@ -3,6 +3,9 @@
 // colidir com o significado reservado de --attention/--destructive no resto
 // do produto). Já vem ordenado desc pelo selector `dashboardMetrics`.
 
+import { CircleOff } from "lucide-react";
+
+import { EmptyState } from "@/components/EmptyState";
 import { LOSS_REASON_LABELS } from "@/lib/constants";
 import type { LossReason } from "@/lib/types";
 
@@ -17,7 +20,14 @@ interface LossRankingProps {
 
 export function LossRanking({ data }: LossRankingProps) {
   if (data.length === 0) {
-    return <p className="text-sm text-muted-foreground">Nenhum negócio perdido registrado.</p>;
+    return (
+      <EmptyState
+        compact
+        icon={CircleOff}
+        title="Nenhum negócio perdido registrado"
+        description="Ótimo sinal — continue acompanhando o funil."
+      />
+    );
   }
 
   const maxCount = Math.max(1, ...data.map((d) => d.count));

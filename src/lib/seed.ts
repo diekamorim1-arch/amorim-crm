@@ -5,6 +5,7 @@
 // demo sempre parece atual, não importa quando for aberta.
 
 import { daysAgo, hoursAgo } from "./format";
+import { newId } from "./id";
 import type {
   Activity,
   ActivityType,
@@ -18,10 +19,6 @@ import type {
   User,
   WhatsAppConnection,
 } from "./types";
-
-function newId(prefix: string): string {
-  return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
-}
 
 /** Soma minutos a um ISO string — usado para derivar `endsAt` a partir de `startsAt`. */
 function plusMinutes(iso: string, minutes: number): string {

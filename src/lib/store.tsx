@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { buildSeed } from "./seed";
+import { newId } from "./id";
 import type {
   Activity,
   Appointment,
@@ -25,9 +26,10 @@ import type {
 
 const STORAGE_KEY = "amorim-crm-state-v1";
 
-export function newId(prefix: string): string {
-  return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
-}
+// Re-exportado para consumidores que já importam `newId` de "@/lib/store"
+// (a maioria dos componentes) — a implementação real vive em "./id" para
+// evitar um ciclo de import com seed.ts (ver comentário em id.ts).
+export { newId };
 
 // Re-exportado para consumidores que despacham ações fora de componentes
 // React (ex.: fakeReply.ts) e precisam tipar seu próprio `dispatch` recebido

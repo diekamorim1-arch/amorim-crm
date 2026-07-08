@@ -21,7 +21,7 @@ export function Topbar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background px-4">
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <GlobalSearch />
       </div>
 

@@ -1,5 +1,8 @@
 // Sheet lateral com a lista de negócios perdidos (título, valor, motivo, data).
 
+import { CircleOff } from "lucide-react";
+
+import { EmptyState } from "@/components/EmptyState";
 import {
   Sheet,
   SheetContent,
@@ -28,7 +31,11 @@ export function LostDealsSheet({ open, onOpenChange, deals }: LostDealsSheetProp
 
         <div className="flex flex-col gap-3 overflow-y-auto px-4 pb-4">
           {deals.length === 0 && (
-            <p className="text-sm text-muted-foreground">Nenhum negócio perdido ainda.</p>
+            <EmptyState
+              icon={CircleOff}
+              title="Nenhum negócio perdido ainda"
+              description="Os negócios marcados como perdidos vão aparecer aqui."
+            />
           )}
           {deals.map((deal) => (
             <div key={deal.id} className="rounded-xl border border-border p-3">

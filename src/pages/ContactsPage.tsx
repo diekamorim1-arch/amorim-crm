@@ -5,8 +5,9 @@
 
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, SearchX, Users } from "lucide-react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { JourneyBadge } from "@/components/contacts/JourneyBadge";
 import { ContactFormDialog } from "@/components/contacts/ContactFormDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -186,15 +187,30 @@ export function ContactsPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
-          <p className="text-sm font-medium text-foreground">Nenhum cliente encontrado</p>
-          <p className="text-sm text-muted-foreground">Tente ajustar a busca ou os filtros aplicados.</p>
-          {hasActiveFilters && (
-            <Button variant="outline" size="sm" onClick={clearFilters} className="mt-2">
-              Limpar filtros
-            </Button>
-          )}
-        </div>
+        hasActiveFilters ? (
+          <EmptyState
+            icon={SearchX}
+            title="Nenhum cliente encontrado"
+            description="Tente ajustar a busca ou os filtros aplicados."
+            action={
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                Limpar filtros
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Users}
+            title="Nenhum cliente cadastrado ainda"
+            description="Adicione o primeiro cliente da loja para começar a acompanhar a jornada dele."
+            action={
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus />
+                Novo cliente
+              </Button>
+            }
+          />
+        )
       ) : (
         <>
           {/* Desktop: tabela */}
@@ -213,8 +229,16 @@ export function ContactsPage() {
                 {filtered.map((contact) => (
                   <TableRow
                     key={contact.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => openContact(contact)}
-                    className="cursor-pointer"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openContact(contact);
+                      }
+                    }}
+                    className="cursor-pointer outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                   >
                     <TableCell>
                       <div className="flex items-center gap-2">

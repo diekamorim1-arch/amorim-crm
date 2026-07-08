@@ -1,32 +1,40 @@
-# React + TypeScript + Vite
+# Amorim CRM
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Protótipo de CRM multi-tenant para revendas Apple premium (WhatsApp, pipeline de vendas, agenda e ficha de clientes), construído para validar o produto "Amorim CRM" antes de qualquer investimento em backend.
 
-Currently, two official plugins are available:
+**É um protótipo frontend-only**: não há servidor, banco de dados ou API. Todo o estado (tenants, usuários, contatos, negócios, conversas, agenda) é gerado por uma seed determinística em `src/lib/seed.ts` e persistido no `localStorage` do navegador (`src/lib/store.tsx`). Use "Resetar demo" no menu do usuário para descartar qualquer alteração e voltar ao estado inicial.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Stack
 
-## React Compiler
+- **React 19** + **TypeScript** + **Vite**
+- **React Router 8** para navegação
+- **Tailwind CSS 4** + **shadcn/ui** (Radix primitives) para os componentes
+- **Vitest** para testes unitários
+- **Oxlint** para lint
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Tipografia: Inter (corpo), Bricolage Grotesque (títulos/display) e Geist Mono (valores em R$, telefones, horários) via `@fontsource-variable/*`. Veja `docs/design-direction.md` para o contrato visual completo.
 
-## Expanding the Oxlint configuration
+## Rodando localmente
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev       # servidor de desenvolvimento (http://localhost:5173)
+npm run build     # typecheck (tsc -b) + build de produção (vite build)
+npm run preview   # serve o build de produção localmente
+npm run test      # roda a suíte de testes (vitest run)
+npm run lint      # lint (oxlint)
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Estrutura
+
+```
+src/
+  components/   componentes de UI, organizados por área (inbox, pipeline, agenda, contacts, dashboard, settings, admin, layout, ui/ para primitivos shadcn)
+  lib/          estado global (store.tsx), seed de demonstração (seed.ts), seletores (selectors.ts), tipos (types.ts), constantes/labels pt-BR (constants.ts)
+  pages/        uma página por rota
+docs/           documentação de design e especificação do produto
+```
+
+## Contas de demonstração
+
+A tela de login oferece acesso rápido a três papéis (atendente, gestor, admin do SaaS) que refletem os dados seed de duas lojas fictícias: **Amorim Imports** e **TechStore SP**. Cada papel enxerga apenas os dados do seu próprio tenant — o admin do SaaS pode entrar como gestor de qualquer loja (impersonação) e voltar ao painel a qualquer momento.

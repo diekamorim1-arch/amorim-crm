@@ -5,9 +5,10 @@
 
 import type { MouseEvent } from "react";
 import { Link } from "react-router";
-import { Check, X } from "lucide-react";
+import { Check, CalendarX, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { EmptyState } from "@/components/EmptyState";
 import { APPOINTMENT_TYPE_STYLES } from "@/components/agenda/appointmentTypeStyles";
 import { formatHourMinute } from "@/components/agenda/weekGridMath";
 import { Badge } from "@/components/ui/badge";
@@ -40,9 +41,11 @@ export function TodayList({ appointments, contacts, deals, users, onSelectAppoin
 
   if (sorted.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border py-16 text-center">
-        <p className="text-sm text-muted-foreground">Nenhum agendamento para hoje.</p>
-      </div>
+      <EmptyState
+        icon={CalendarX}
+        title="Nenhum agendamento para hoje"
+        description="Crie um novo agendamento ou confira a visão semanal."
+      />
     );
   }
 

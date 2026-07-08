@@ -3,6 +3,9 @@
 // leitor quer comparar em coluna pede tabela, não cor — ver skill dataviz
 // ("mais de ~7 classes com significado -> tabela").
 
+import { Users } from "lucide-react";
+
+import { EmptyState } from "@/components/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ORIGIN_LABELS } from "@/lib/constants";
 import type { Origin } from "@/lib/types";
@@ -19,7 +22,14 @@ interface ChannelTableProps {
 
 export function ChannelTable({ data }: ChannelTableProps) {
   if (data.length === 0) {
-    return <p className="text-sm text-muted-foreground">Nenhum lead registrado ainda.</p>;
+    return (
+      <EmptyState
+        compact
+        icon={Users}
+        title="Nenhum lead registrado ainda"
+        description="Os leads por canal vão aparecer aqui conforme você cadastra contatos."
+      />
+    );
   }
 
   const sorted = [...data].sort((a, b) => b.total - a.total);

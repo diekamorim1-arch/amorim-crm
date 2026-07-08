@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PLAN_LABELS } from "@/lib/constants";
+import { AVATAR_COLORS, PLAN_LABELS } from "@/lib/constants";
 import { newId, type CrmAction, type Dispatch } from "@/lib/store";
 import type { Tenant, User } from "@/lib/types";
 
@@ -37,7 +37,6 @@ interface TenantFormDialogProps {
 }
 
 const PLAN_OPTIONS: Tenant["plan"][] = ["starter", "pro"];
-const AVATAR_COLORS = ["#1D4ED8", "#DB2777", "#059669", "#EA580C", "#7C3AED", "#0F172A", "#0891B2", "#B45309"];
 const DEFAULT_LOSS_REASONS: Tenant["settings"]["lossReasons"] = [
   "preco",
   "prazo_entrega",

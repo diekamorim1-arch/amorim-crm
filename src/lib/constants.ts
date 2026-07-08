@@ -97,3 +97,6 @@ export const CONNECTION_STATUS_LABELS: Record<ConnectionStatus, string> = {
 
 /** Número de dias sem mudança de estágio a partir do qual um deal aberto é considerado "parado" (badge de stale). */
 export const STALE_DAYS = 3;
+
+/** Paleta de cores de avatar sorteada para novos usuários (convite de equipe, gestor padrão de loja nova). */
+export const AVATAR_COLORS = ["#1D4ED8", "#DB2777", "#059669", "#EA580C", "#7C3AED", "#0F172A", "#0891B2", "#B45309"];

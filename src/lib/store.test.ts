@@ -185,6 +185,21 @@ describe("crmReducer — RESET_DEMO", () => {
   });
 });
 
+describe("crmReducer — ENTER_TENANT_AS_GESTOR (impersonação)", () => {
+  it("assume tenantId + role gestor mantendo o userId do admin, e SWITCH_SESSION de volta restaura role admin_saas", () => {
+    const seed = buildSeed();
+    const admin = seed.users.find((u) => u.role === "admin_saas")!;
+    const tenant = seed.tenants[0];
+    const state: CrmState = { ...seed, session: { userId: admin.id, tenantId: "", role: "admin_saas" } };
+
+    const impersonated = crmReducer(state, { type: "ENTER_TENANT_AS_GESTOR", tenantId: tenant.id });
+    expect(impersonated.session).toEqual({ userId: admin.id, tenantId: tenant.id, role: "gestor" });
+
+    const restored = crmReducer(impersonated, { type: "SWITCH_SESSION", userId: admin.id });
+    expect(restored.session).toEqual({ userId: admin.id, tenantId: "", role: "admin_saas" });
+  });
+});
+
 describe("isStale", () => {
   const minimalDeal: Deal = {
     id: "deal_x",
