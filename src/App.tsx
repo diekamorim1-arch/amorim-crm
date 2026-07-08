@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { AgendaPage } from "@/pages/AgendaPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { ContactsPage } from "@/pages/ContactsPage";
+import { DashboardPage } from "@/pages/DashboardPage";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
@@ -19,7 +20,7 @@ function App() {
       <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
 
       <Route element={<AppShell />}>
-        <Route path="/" element={<PlaceholderPage title="Dashboard" task={8} />} />
+        <Route path="/" element={<DashboardPage />} />
         <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/inbox/:conversationId" element={<InboxPage />} />
