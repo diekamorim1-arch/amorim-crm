@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { daysAgo } from "./format";
 import { crmReducer } from "./store";
 import { buildSeed } from "./seed";
-import { dealsByStage, isStale, lostDeals } from "./selectors";
+import { dashboardMetrics, dealsByStage, isStale, lostDeals } from "./selectors";
 import type { Contact, Conversation, CrmState, Deal, Tenant, User } from "./types";
 
 function baseState(): CrmState {
@@ -215,6 +215,37 @@ describe("isStale", () => {
   it("false quando outcome não é aberto, mesmo parado há muitos dias", () => {
     const deal: Deal = { ...minimalDeal, stageChangedAt: daysAgo(10), outcome: "ganho" };
     expect(isStale(deal)).toBe(false);
+  });
+});
+
+describe("dashboardMetrics", () => {
+  it("inNegotiationValue soma deals abertos em negociacao e em fechamento", () => {
+    let state = baseState();
+    // state.deals[0] já é negociacao/aberto, value 5000.
+    const fechamentoDeal: Deal = { ...state.deals[0], id: "deal_2", stage: "fechamento", value: 3000 };
+    state = { ...state, deals: [...state.deals, fechamentoDeal] };
+
+    const metrics = dashboardMetrics(state);
+    expect(metrics.inNegotiationValue).toBe(5000 + 3000);
+  });
+
+  it("byChannel.won conta contatos distintos com ao menos uma venda, nunca passando de total", () => {
+    const seed = buildSeed();
+    const tenant1 = seed.tenants.find((t) => t.slug === "amorim-imports")!;
+    const rafael = seed.users.find((u) => u.name === "Rafael Amorim")!;
+    const state: CrmState = { ...seed, session: { userId: rafael.id, tenantId: tenant1.id, role: "gestor" } };
+
+    const metrics = dashboardMetrics(state);
+
+    // Nenhum canal pode "ganhar" mais contatos do que tem — mesmo quando um
+    // contato recorrente (marcelo, fernanda) tem 2+ negócios ganhos.
+    expect(metrics.byChannel.every((row) => row.won <= row.total)).toBe(true);
+
+    const indicacao = metrics.byChannel.find((row) => row.origin === "indicacao")!;
+    expect(indicacao.total).toBe(4); // thiago, eduardo, marcelo, fernanda
+    // eduardo (1 ganho), marcelo (2 ganhos) e fernanda (2 ganhos) contam uma
+    // vez cada; thiago (em negociação, sem ganho) não conta.
+    expect(indicacao.won).toBe(3);
   });
 });
 

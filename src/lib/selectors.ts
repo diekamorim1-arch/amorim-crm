@@ -114,7 +114,7 @@ export function dashboardMetrics(state: CrmState): {
   const newLeadsMonth = contacts.filter((c) => isSameMonth(c.firstContactAt, now)).length;
 
   const inNegotiationValue = deals
-    .filter((d) => d.stage === "negociacao" && d.outcome === "aberto")
+    .filter((d) => d.outcome === "aberto" && (d.stage === "negociacao" || d.stage === "fechamento"))
     .reduce((sum, d) => sum + d.value, 0);
 
   const wonDeals = deals.filter((d) => d.outcome === "ganho");
@@ -144,10 +144,13 @@ export function dashboardMetrics(state: CrmState): {
   const byChannel = originsPresent.map((origin) => {
     const channelContacts = contacts.filter((c) => c.origin === origin);
     const channelContactIds = new Set(channelContacts.map((c) => c.id));
+    const wonContactIds = new Set(
+      deals.filter((d) => d.outcome === "ganho" && channelContactIds.has(d.contactId)).map((d) => d.contactId),
+    );
     return {
       origin,
       total: channelContacts.length,
-      won: deals.filter((d) => d.outcome === "ganho" && channelContactIds.has(d.contactId)).length,
+      won: wonContactIds.size,
     };
   });
 
