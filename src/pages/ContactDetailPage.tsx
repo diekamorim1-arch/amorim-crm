@@ -4,8 +4,9 @@
 
 import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
-import { MessageCircle, Pencil } from "lucide-react";
+import { CalendarDays, MessageCircle, Pencil } from "lucide-react";
 
+import { AppointmentDialog } from "@/components/agenda/AppointmentDialog";
 import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
 import { ContactFormDialog } from "@/components/contacts/ContactFormDialog";
 import { JourneyBadge } from "@/components/contacts/JourneyBadge";
@@ -41,6 +42,7 @@ export function ContactDetailPage() {
   const { state } = useCrm();
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
+  const [apptOpen, setApptOpen] = useState(false);
 
   const contact = contactId ? contactById(state, contactId) : undefined;
 
@@ -95,10 +97,14 @@ export function ContactDetailPage() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={handleOpenConversation}>
             <MessageCircle />
             Abrir conversa
+          </Button>
+          <Button variant="outline" onClick={() => setApptOpen(true)}>
+            <CalendarDays />
+            Agendar
           </Button>
           <Button onClick={() => setEditOpen(true)}>
             <Pencil />
@@ -148,6 +154,12 @@ export function ContactDetailPage() {
       </Tabs>
 
       <ContactFormDialog contact={contact} open={editOpen} onOpenChange={setEditOpen} />
+      <AppointmentDialog
+        contactId={contact.id}
+        dealId={openDeals[0]?.id}
+        open={apptOpen}
+        onOpenChange={setApptOpen}
+      />
     </div>
   );
 }

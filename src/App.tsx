@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { AgendaPage } from "@/pages/AgendaPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { ContactsPage } from "@/pages/ContactsPage";
 import { InboxPage } from "@/pages/InboxPage";
@@ -24,7 +25,7 @@ function App() {
         <Route path="/inbox/:conversationId" element={<InboxPage />} />
         <Route path="/clientes" element={<ContactsPage />} />
         <Route path="/clientes/:contactId" element={<ContactDetailPage />} />
-        <Route path="/agenda" element={<PlaceholderPage title="Agenda" task={7} />} />
+        <Route path="/agenda" element={<AgendaPage />} />
         <Route path="/config" element={<PlaceholderPage title="Configurações" task={9} />} />
         <Route path="/whatsapp" element={<PlaceholderPage title="WhatsApp" task={10} />} />
         <Route path="/admin" element={<PlaceholderPage title="Admin do SaaS" task={11} />} />

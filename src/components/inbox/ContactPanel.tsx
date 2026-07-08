@@ -7,6 +7,7 @@ import { useNavigate } from "react-router";
 import { CalendarDays, Plus, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
+import { AppointmentDialog } from "@/components/agenda/AppointmentDialog";
 import { JourneyBadge } from "@/components/contacts/JourneyBadge";
 import { QuickDealDialog } from "@/components/inbox/QuickDealDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -41,6 +42,7 @@ export function ContactPanel({ contactId }: ContactPanelProps) {
   const { state, dispatch } = useCrm();
   const navigate = useNavigate();
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
+  const [apptDialogOpen, setApptDialogOpen] = useState(false);
 
   const contact = contactById(state, contactId);
   const { deals } = tenantScope(state);
@@ -128,9 +130,7 @@ export function ContactPanel({ contactId }: ContactPanelProps) {
           <Plus />
           Criar negócio
         </Button>
-        {/* TODO(Task 7): trocar por <AppointmentDialog> pré-preenchido com este
-            contato/negócio. Por ora, apenas navega para a Agenda. */}
-        <Button variant="outline" onClick={() => navigate("/agenda")}>
+        <Button variant="outline" onClick={() => setApptDialogOpen(true)}>
           <CalendarDays />
           Agendar
         </Button>
@@ -141,6 +141,12 @@ export function ContactPanel({ contactId }: ContactPanelProps) {
       </div>
 
       <QuickDealDialog open={dealDialogOpen} onOpenChange={setDealDialogOpen} contactId={contact.id} />
+      <AppointmentDialog
+        contactId={contact.id}
+        dealId={activeDeal?.id}
+        open={apptDialogOpen}
+        onOpenChange={setApptDialogOpen}
+      />
     </div>
   );
 }
