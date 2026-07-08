@@ -382,7 +382,7 @@ function buildTenant1Deals(
   tenantId: string,
   c: ReturnType<typeof buildTenant1Contacts>,
   u: ReturnType<typeof buildUsers>,
-  supplierProductIds: { iphone15: string; iphone15ProMax: string; airpodsPro: string },
+  supplierProductIds: { iphone15: string; iphone15ProMax: string; watchSeries9: string; airpodsPro: string },
 ) {
   const brunoDeal: Deal = {
     id: newId("deal"),
@@ -544,8 +544,8 @@ function buildTenant1Deals(
     ownerId: u.rafael.id,
     stageChangedAt: daysAgo(10),
     createdAt: daysAgo(13),
-    supplierProductId: supplierProductIds.airpodsPro,
-    supplierValue: 1080,
+    supplierProductId: supplierProductIds.watchSeries9,
+    supplierValue: 1980,
   };
   const marceloDeal: Deal = {
     id: newId("deal"),
@@ -708,8 +708,6 @@ function buildTenant1Deals(
     ownerId: u.rafael.id,
     stageChangedAt: daysAgo(128),
     createdAt: daysAgo(134),
-    supplierProductId: supplierProductIds.iphone15,
-    supplierValue: 3650,
   };
   const rodrigoHist2: Deal = {
     id: newId("deal"),
@@ -1498,6 +1496,7 @@ export function buildSeed(): CrmState {
   const supplierProductIds = {
     iphone15: tenant1Suppliers.supplierProducts[0].id,
     iphone15ProMax: tenant1Suppliers.supplierProducts[1].id,
+    watchSeries9: tenant1Suppliers.supplierProducts[2].id,
     airpodsPro: tenant1Suppliers.supplierProducts[3].id,
   };
 
