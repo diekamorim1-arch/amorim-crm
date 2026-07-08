@@ -15,6 +15,7 @@ import {
   MoreHorizontal,
   Settings,
   Store,
+  Truck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -37,6 +38,7 @@ const ATENDENTE_ITEMS: NavItem[] = [
   { to: "/inbox", label: "Inbox", icon: InboxIcon },
   { to: "/clientes", label: "Clientes", icon: Users },
   { to: "/agenda", label: "Agenda", icon: CalendarDays },
+  { to: "/fornecedores", label: "Fornecedores", icon: Truck },
   { to: "/whatsapp", label: "WhatsApp", icon: MessageSquare },
 ];
 

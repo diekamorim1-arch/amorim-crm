@@ -8,7 +8,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/button";
 import { useCrm } from "@/lib/store";
 
-const ATENDENTE_ALLOWED_BASES = ["/pipeline", "/inbox", "/clientes", "/agenda", "/whatsapp"];
+const ATENDENTE_ALLOWED_BASES = ["/pipeline", "/inbox", "/clientes", "/agenda", "/whatsapp", "/fornecedores"];
 
 export function AppShell() {
   const { state, dispatch } = useCrm();

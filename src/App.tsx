@@ -10,6 +10,8 @@ import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { SupplierDetailPage } from "@/pages/SupplierDetailPage";
+import { SuppliersPage } from "@/pages/SuppliersPage";
 import { WhatsAppPage } from "@/pages/WhatsAppPage";
 import { useCrm } from "@/lib/store";
 
@@ -29,6 +31,8 @@ function App() {
         <Route path="/clientes" element={<ContactsPage />} />
         <Route path="/clientes/:contactId" element={<ContactDetailPage />} />
         <Route path="/agenda" element={<AgendaPage />} />
+        <Route path="/fornecedores" element={<SuppliersPage />} />
+        <Route path="/fornecedores/:supplierId" element={<SupplierDetailPage />} />
         <Route path="/config" element={<SettingsPage />} />
         <Route path="/whatsapp" element={<WhatsAppPage />} />
         <Route path="/admin" element={<AdminTenantsPage />} />
