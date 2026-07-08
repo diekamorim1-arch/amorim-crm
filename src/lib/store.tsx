@@ -364,13 +364,35 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
   }
 }
 
+/**
+ * Valida se um objeto desserializado do localStorage tem o formato mínimo
+ * esperado de um `CrmState` para ser usado com segurança. Além das coleções
+ * originais, exige `suppliers`/`supplierProducts`/`supplierPriceChanges`
+ * (adicionadas na Task 1 deste mini-plano): um blob salvo por uma sessão
+ * anterior a essa mudança teria `tenants` como array (passando numa checagem
+ * mais fraca) mas careceria totalmente dessas 3 coleções novas — e a
+ * primeira chamada a `tenantScope()` quebraria com TypeError ao chamar
+ * `.filter()` em `undefined`. Exportada como função pura para ser testável
+ * sem precisar mockar `window.localStorage`.
+ */
+export function isValidPersistedState(parsed: unknown): parsed is CrmState {
+  if (!parsed || typeof parsed !== "object") return false;
+  const candidate = parsed as Partial<CrmState>;
+  return (
+    Array.isArray(candidate.tenants) &&
+    Array.isArray(candidate.suppliers) &&
+    Array.isArray(candidate.supplierProducts) &&
+    Array.isArray(candidate.supplierPriceChanges)
+  );
+}
+
 function loadInitialState(): CrmState {
   if (typeof window === "undefined") return buildSeed();
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return buildSeed();
-    const parsed = JSON.parse(raw) as CrmState;
-    if (!parsed || !Array.isArray(parsed.tenants)) return buildSeed();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isValidPersistedState(parsed)) return buildSeed();
     return parsed;
   } catch {
     return buildSeed();

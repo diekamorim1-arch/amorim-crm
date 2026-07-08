@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { daysAgo } from "./format";
-import { crmReducer } from "./store";
+import { crmReducer, isValidPersistedState } from "./store";
 import { buildSeed } from "./seed";
 import { currentUser, dashboardMetrics, dealsByStage, isStale, lostDeals, priceHistoryForProduct, tenantScope } from "./selectors";
 import type { Contact, Conversation, CrmState, Deal, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
@@ -606,5 +606,56 @@ describe("buildSeed", () => {
     const tenant1UserIds = new Set(seed.users.filter((u) => u.tenantId === tenant1.id).map((u) => u.id));
     const tenant2Contacts = seed.contacts.filter((c) => c.tenantId === tenant2.id);
     expect(tenant2Contacts.every((c) => !tenant1UserIds.has(c.ownerId))).toBe(true);
+  });
+});
+
+describe("isValidPersistedState — migração de localStorage legado", () => {
+  it("rejeita um estado legado (anterior à Task 1) que tem tenants mas não tem as coleções de fornecedores", () => {
+    // Formato de um blob salvo por uma sessão de browser ANTES da Task 1
+    // introduzir suppliers/supplierProducts/supplierPriceChanges: `tenants`
+    // existe e é array (passaria numa checagem fraca de "Array.isArray(tenants)"),
+    // mas as 3 coleções novas não existem em lugar nenhum do objeto.
+    const legacyState = {
+      tenants: [{ id: "tenant_1", name: "Loja Legada" }],
+      users: [],
+      contacts: [],
+      deals: [],
+      conversations: [],
+      messages: [],
+      appointments: [],
+      activities: [],
+      connections: [],
+      session: null,
+      // sem suppliers / supplierProducts / supplierPriceChanges
+    };
+
+    expect(isValidPersistedState(legacyState)).toBe(false);
+  });
+
+  it("aceita um estado que tem todas as coleções novas como arrays (mesmo vazios)", () => {
+    const upToDateState = {
+      tenants: [],
+      users: [],
+      contacts: [],
+      deals: [],
+      conversations: [],
+      messages: [],
+      appointments: [],
+      activities: [],
+      connections: [],
+      session: null,
+      suppliers: [],
+      supplierProducts: [],
+      supplierPriceChanges: [],
+    };
+
+    expect(isValidPersistedState(upToDateState)).toBe(true);
+  });
+
+  it("rejeita valores não-objeto (null, undefined, string, array solto)", () => {
+    expect(isValidPersistedState(null)).toBe(false);
+    expect(isValidPersistedState(undefined)).toBe(false);
+    expect(isValidPersistedState("not an object")).toBe(false);
+    expect(isValidPersistedState([])).toBe(false);
   });
 });
