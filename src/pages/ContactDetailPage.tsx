@@ -12,6 +12,7 @@ import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
 import { ContactFormDialog } from "@/components/contacts/ContactFormDialog";
 import { JourneyBadge } from "@/components/contacts/JourneyBadge";
 import { EditDealDialog } from "@/components/pipeline/EditDealDialog";
+import { AttachmentsTab } from "@/components/contacts/AttachmentsTab";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -151,6 +152,9 @@ export function ContactDetailPage() {
           <TabsTrigger value="timeline" className="flex-none">
             Timeline
           </TabsTrigger>
+          <TabsTrigger value="comprovantes" className="flex-none">
+            Comprovantes
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dados" className="mt-4">
@@ -171,6 +175,10 @@ export function ContactDetailPage() {
 
         <TabsContent value="timeline" className="mt-4">
           <ActivityTimeline contactId={contact.id} />
+        </TabsContent>
+
+        <TabsContent value="comprovantes" className="mt-4">
+          <AttachmentsTab contactId={contact.id} />
         </TabsContent>
       </Tabs>
 
