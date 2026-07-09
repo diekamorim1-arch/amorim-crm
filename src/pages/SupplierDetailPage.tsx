@@ -35,6 +35,7 @@ export function SupplierDetailPage() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [newProductOpen, setNewProductOpen] = useState(false);
+  const [editProduct, setEditProduct] = useState<SupplierProduct | null>(null);
   const [priceProduct, setPriceProduct] = useState<SupplierProduct | null>(null);
   const [historyProduct, setHistoryProduct] = useState<SupplierProduct | null>(null);
 
@@ -100,6 +101,7 @@ export function SupplierDetailPage() {
             {products.map((product) => (
               <div
                 key={product.id}
+                onDoubleClick={() => setEditProduct(product)}
                 className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex flex-col gap-0.5">
@@ -130,6 +132,12 @@ export function SupplierDetailPage() {
 
       <SupplierFormDialog supplier={supplier} open={editOpen} onOpenChange={setEditOpen} />
       <SupplierProductDialog supplierId={supplier.id} open={newProductOpen} onOpenChange={setNewProductOpen} />
+      <SupplierProductDialog
+        supplierId={supplier.id}
+        product={editProduct ?? undefined}
+        open={!!editProduct}
+        onOpenChange={(o) => !o && setEditProduct(null)}
+      />
       <EditPriceDialog product={priceProduct} open={!!priceProduct} onOpenChange={(o) => !o && setPriceProduct(null)} />
       <PriceHistorySheet
         product={historyProduct}
