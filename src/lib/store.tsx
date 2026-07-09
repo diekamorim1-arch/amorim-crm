@@ -4,10 +4,12 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   type Dispatch,
   type JSX,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 import { buildSeed } from "./seed";
 import { newId } from "./id";
 import type {
@@ -449,12 +451,28 @@ const CrmContext = createContext<CrmContextValue | null>(null);
 
 export function CrmProvider({ children }: { children: ReactNode }): JSX.Element {
   const [state, dispatch] = useReducer(crmReducer, undefined, loadInitialState);
+  // Evita spammar o toast de quota excedida a cada mudança de estado enquanto
+  // o problema persiste: só avisa uma vez por "sequência" de falhas, e reseta
+  // assim que um setItem volta a funcionar.
+  const hasWarnedQuotaRef = useRef(false);
 
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // localStorage indisponível (modo privado, quota excedida etc.) — segue sem persistir.
+      hasWarnedQuotaRef.current = false;
+    } catch (error) {
+      const isQuotaExceeded =
+        error instanceof DOMException &&
+        (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
+
+      if (isQuotaExceeded) {
+        if (!hasWarnedQuotaRef.current) {
+          hasWarnedQuotaRef.current = true;
+          toast.error("Armazenamento local cheio — as últimas alterações podem não ter sido salvas.");
+        }
+      } else {
+        // localStorage indisponível (modo privado, etc.) — segue sem persistir.
+      }
     }
   }, [state]);
 

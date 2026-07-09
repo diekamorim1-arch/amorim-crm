@@ -15,7 +15,7 @@ import { tenantScope } from "@/lib/selectors";
 import { newId, useCrm } from "@/lib/store";
 import type { Attachment } from "@/lib/types";
 
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_FILE_BYTES = 1.5 * 1024 * 1024;
 
 interface AttachmentsTabProps {
   contactId: string;
@@ -50,24 +50,28 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
     if (!file || !state.session) return;
 
     if (file.size > MAX_FILE_BYTES) {
-      setError("Arquivo maior que 5MB. Escolha um arquivo menor.");
+      setError("Arquivo maior que 1,5MB. Escolha um arquivo menor.");
       return;
     }
     setError("");
 
-    const dataUrl = await readAsDataUrl(file);
-    const attachment: Attachment = {
-      id: newId("attachment"),
-      tenantId: state.session.tenantId,
-      contactId,
-      fileName: file.name,
-      fileType: file.type,
-      dataUrl,
-      uploadedBy: state.session.userId,
-      uploadedAt: new Date().toISOString(),
-    };
-    dispatch({ type: "ADD_ATTACHMENT", attachment });
-    toast.success(`Comprovante ${file.name} anexado.`);
+    try {
+      const dataUrl = await readAsDataUrl(file);
+      const attachment: Attachment = {
+        id: newId("attachment"),
+        tenantId: state.session.tenantId,
+        contactId,
+        fileName: file.name,
+        fileType: file.type,
+        dataUrl,
+        uploadedBy: state.session.userId,
+        uploadedAt: new Date().toISOString(),
+      };
+      dispatch({ type: "ADD_ATTACHMENT", attachment });
+      toast.success(`Comprovante ${file.name} anexado.`);
+    } catch {
+      setError("Não foi possível ler o arquivo. Tente novamente.");
+    }
   }
 
   function handleRemove(attachment: Attachment) {
@@ -83,7 +87,7 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
           <Paperclip />
           Anexar comprovante
         </Button>
-        <p className="text-xs text-muted-foreground">Imagens ou PDF, até 5MB por arquivo.</p>
+        <p className="text-xs text-muted-foreground">Imagens ou PDF, até 1,5MB por arquivo.</p>
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
 
