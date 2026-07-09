@@ -170,7 +170,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="deal-supplier-value">Valor do fornecedor</Label>
+              <Label htmlFor="deal-supplier-value">Fornecedor</Label>
               <Input
                 id="deal-supplier-value"
                 type="number"
@@ -184,7 +184,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="deal-gift-value">Valor dos brindes</Label>
+              <Label htmlFor="deal-gift-value">Brindes</Label>
               <Input
                 id="deal-gift-value"
                 type="number"
