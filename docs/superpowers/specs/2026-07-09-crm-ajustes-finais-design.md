@@ -31,7 +31,7 @@
 **Regra geral:** duplo-clique é sempre um atalho adicional — nunca substitui um controle já clicável/navegável existente.
 
 - **`DealCard.tsx`:** `onDoubleClick` no `<div>` raiz do card chama `onEditDeal(deal)` quando a prop existir (mesma condição que já rege o item "Editar negócio" do menu "⋮" — ambos só aparecem/funcionam para gestor, decidido pelos pais). O menu "⋮" continua exatamente como está. Verificar que o `draggable`/`onDragStart` nativo não conflita com o duplo-clique (o HTML5 DnD não impede `onDoubleClick` de disparar normalmente).
-- **`SuppliersPage.tsx`:** card do fornecedor ganha `onDoubleClick` abrindo `SupplierFormDialog` em modo edição; o clique único continua navegando para `/fornecedores/:id` como hoje.
+- **`SuppliersPage.tsx`:** ~~card do fornecedor ganha `onDoubleClick` abrindo `SupplierFormDialog` em modo edição~~ — **removido durante a implementação** (Task 2): verificado ao vivo que o clique único (`onClick`, navega para `/fornecedores/:id`) sempre dispara antes do gesto de duplo-clique ser reconhecido pelo navegador, tornando o atalho morto na prática. Decisão do usuário: manter só o clique único (navegação instantânea, como hoje); editar fornecedor continua disponível pelo botão "Editar" já existente em `SupplierDetailPage.tsx`.
 - **`SupplierDetailPage.tsx`:** cada linha de produto ganha `onDoubleClick` abrindo `SupplierProductDialog` em modo edição (item 1). "Editar preço" continua ao lado, inalterado.
 
 ## 4. Aba de anexos (comprovante de pagamento) na ficha do lead

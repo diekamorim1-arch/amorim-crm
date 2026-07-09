@@ -700,45 +700,9 @@ Adicionar uma segunda instância de `SupplierProductDialog` para o modo de ediç
       <EditPriceDialog product={priceProduct} open={!!priceProduct} onOpenChange={(o) => !o && setPriceProduct(null)} />
 ```
 
-- [ ] **Step 3: Duplo-clique no card do fornecedor em `SuppliersPage.tsx`**
+- [x] **Step 3 (REMOVIDO na implementação): duplo-clique no card do fornecedor em `SuppliersPage.tsx`**
 
-Em `src/pages/SuppliersPage.tsx`, adicionar um novo estado `editSupplier` (após `const [createOpen, setCreateOpen] = useState(false);`):
-
-```tsx
-  const [search, setSearch] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
-```
-
-Adicionar `onDoubleClick` ao `<Card>` (mantendo o `onClick` de navegação já existente):
-
-```tsx
-            <Card
-              key={supplier.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => openSupplier(supplier)}
-              onDoubleClick={() => setEditSupplier(supplier)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  openSupplier(supplier);
-                }
-              }}
-              className="cursor-pointer rounded-xl transition-colors hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-```
-
-Adicionar uma segunda instância de `SupplierFormDialog` para edição, logo após a instância de criação já existente:
-
-```tsx
-      <SupplierFormDialog open={createOpen} onOpenChange={setCreateOpen} />
-      <SupplierFormDialog
-        supplier={editSupplier ?? undefined}
-        open={!!editSupplier}
-        onOpenChange={(o) => !o && setEditSupplier(null)}
-      />
-```
+Este step foi implementado conforme escrito acima e depois revertido: a revisão da Task 2 confirmou ao vivo que `onClick` (navega) e `onDoubleClick` no mesmo `<Card>` competem — o clique único sempre navega e desmonta a página antes do gesto de duplo-clique ser reconhecido, tornando o atalho morto na prática. Decisão do usuário: remover o `onDoubleClick`/`editSupplier`/segunda instância de `SupplierFormDialog` desta página; manter só a navegação de clique único (como era antes desta leva). Editar fornecedor continua disponível pelo botão "Editar" já existente em `SupplierDetailPage.tsx`. Ver nota equivalente no spec (`docs/superpowers/specs/2026-07-09-crm-ajustes-finais-design.md`, seção 3).
 
 - [ ] **Step 4: Verificar tipos e testes**
 
