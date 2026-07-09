@@ -22,7 +22,6 @@ export function SuppliersPage() {
 
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
 
   const isGestor = me?.role === "gestor";
 
@@ -98,7 +97,6 @@ export function SuppliersPage() {
               role="button"
               tabIndex={0}
               onClick={() => openSupplier(supplier)}
-              onDoubleClick={() => setEditSupplier(supplier)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
@@ -123,11 +121,6 @@ export function SuppliersPage() {
       )}
 
       <SupplierFormDialog open={createOpen} onOpenChange={setCreateOpen} />
-      <SupplierFormDialog
-        supplier={editSupplier ?? undefined}
-        open={!!editSupplier}
-        onOpenChange={(o) => !o && setEditSupplier(null)}
-      />
     </div>
   );
 }
