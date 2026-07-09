@@ -1528,6 +1528,7 @@ export function buildSeed(): CrmState {
     suppliers: tenant1Suppliers.suppliers,
     supplierProducts: tenant1Suppliers.supplierProducts,
     supplierPriceChanges: tenant1Suppliers.supplierPriceChanges,
+    attachments: [],
     session: null,
   };
 }

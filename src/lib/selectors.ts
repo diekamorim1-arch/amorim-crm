@@ -2,6 +2,7 @@ import { STAGES, STALE_DAYS } from "./constants";
 import type {
   Activity,
   Appointment,
+  Attachment,
   Contact,
   Conversation,
   CrmState,
@@ -32,6 +33,7 @@ export function tenantScope(state: CrmState): {
   suppliers: Supplier[];
   supplierProducts: SupplierProduct[];
   supplierPriceChanges: SupplierPriceChange[];
+  attachments: Attachment[];
 } {
   const tenantId = state.session?.tenantId;
   if (!tenantId) {
@@ -47,6 +49,7 @@ export function tenantScope(state: CrmState): {
       suppliers: [],
       supplierProducts: [],
       supplierPriceChanges: [],
+      attachments: [],
     };
   }
 
@@ -62,6 +65,7 @@ export function tenantScope(state: CrmState): {
     suppliers: state.suppliers.filter((s) => s.tenantId === tenantId),
     supplierProducts: state.supplierProducts.filter((p) => p.tenantId === tenantId),
     supplierPriceChanges: state.supplierPriceChanges.filter((p) => p.tenantId === tenantId),
+    attachments: state.attachments.filter((a) => a.tenantId === tenantId),
   };
 }
 

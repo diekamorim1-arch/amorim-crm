@@ -3,7 +3,7 @@ import { daysAgo } from "./format";
 import { crmReducer, isValidPersistedState } from "./store";
 import { buildSeed } from "./seed";
 import { currentUser, dashboardMetrics, dealsByStage, isStale, lostDeals, priceHistoryForProduct, tenantScope } from "./selectors";
-import type { Contact, Conversation, CrmState, Deal, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
+import type { Attachment, Contact, Conversation, CrmState, Deal, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
 
 function baseState(): CrmState {
   const now = new Date().toISOString();
@@ -81,6 +81,7 @@ function baseState(): CrmState {
     suppliers: [],
     supplierProducts: [],
     supplierPriceChanges: [],
+    attachments: [],
     session: { userId: owner.id, tenantId: tenant.id, role: "atendente" },
   };
 }
@@ -321,7 +322,7 @@ describe("crmReducer — fornecedores e custos", () => {
     });
   });
 
-  it("UPDATE_DEAL_FINANCIALS seta supplierProductId/supplierValue/giftValue sem mexer no estágio", () => {
+  it("UPDATE_DEAL_FINANCIALS seta value/supplierProductId/supplierValue/giftValue sem mexer no estágio", () => {
     const { state, product } = stateWithSupplier();
     const dealId = state.deals[0].id;
     const originalStage = state.deals[0].stage;
@@ -329,16 +330,85 @@ describe("crmReducer — fornecedores e custos", () => {
     const next = crmReducer(state, {
       type: "UPDATE_DEAL_FINANCIALS",
       dealId,
+      value: 5200,
       supplierProductId: product.id,
       supplierValue: 3800,
       giftValue: 150,
     });
 
     const updated = next.deals.find((d) => d.id === dealId);
+    expect(updated?.value).toBe(5200);
     expect(updated?.supplierProductId).toBe(product.id);
     expect(updated?.supplierValue).toBe(3800);
     expect(updated?.giftValue).toBe(150);
     expect(updated?.stage).toBe(originalStage);
+  });
+
+  it("UPDATE_SUPPLIER_PRODUCT atualiza o nome sem mexer no preço quando o preço não muda", () => {
+    const { state, product } = stateWithSupplier();
+    const next = crmReducer(state, {
+      type: "UPDATE_SUPPLIER_PRODUCT",
+      productId: product.id,
+      name: "iPhone 15 128GB (Azul)",
+      price: product.currentPrice,
+    });
+
+    const updated = next.supplierProducts.find((p) => p.id === product.id);
+    expect(updated?.name).toBe("iPhone 15 128GB (Azul)");
+    expect(updated?.currentPrice).toBe(product.currentPrice);
+    expect(updated?.updatedAt).toBe(product.updatedAt);
+    expect(next.supplierPriceChanges).toHaveLength(0);
+  });
+
+  it("UPDATE_SUPPLIER_PRODUCT cria uma SupplierPriceChange quando o preço muda", () => {
+    const { state, product } = stateWithSupplier();
+    const next = crmReducer(state, {
+      type: "UPDATE_SUPPLIER_PRODUCT",
+      productId: product.id,
+      name: product.name,
+      price: 4100,
+    });
+
+    const updated = next.supplierProducts.find((p) => p.id === product.id);
+    expect(updated?.currentPrice).toBe(4100);
+    expect(updated?.updatedAt).not.toBe(product.updatedAt);
+    expect(next.supplierPriceChanges).toHaveLength(1);
+    expect(next.supplierPriceChanges[0]).toMatchObject({ supplierProductId: product.id, price: 4100 });
+  });
+});
+
+describe("crmReducer — anexos", () => {
+  it("ADD_ATTACHMENT adiciona um anexo", () => {
+    const base = baseState();
+    const attachment: Attachment = {
+      id: "attachment_1",
+      tenantId: base.tenants[0].id,
+      contactId: base.contacts[0].id,
+      fileName: "comprovante.png",
+      fileType: "image/png",
+      dataUrl: "data:image/png;base64,AAAA",
+      uploadedBy: base.users[0].id,
+      uploadedAt: new Date().toISOString(),
+    };
+    const next = crmReducer(base, { type: "ADD_ATTACHMENT", attachment });
+    expect(next.attachments).toContainEqual(attachment);
+  });
+
+  it("REMOVE_ATTACHMENT remove o anexo pelo id", () => {
+    const base = baseState();
+    const attachment: Attachment = {
+      id: "attachment_1",
+      tenantId: base.tenants[0].id,
+      contactId: base.contacts[0].id,
+      fileName: "comprovante.png",
+      fileType: "image/png",
+      dataUrl: "data:image/png;base64,AAAA",
+      uploadedBy: base.users[0].id,
+      uploadedAt: new Date().toISOString(),
+    };
+    const withAttachment = { ...base, attachments: [attachment] };
+    const next = crmReducer(withAttachment, { type: "REMOVE_ATTACHMENT", attachmentId: attachment.id });
+    expect(next.attachments).toHaveLength(0);
   });
 });
 
@@ -647,9 +717,31 @@ describe("isValidPersistedState — migração de localStorage legado", () => {
       suppliers: [],
       supplierProducts: [],
       supplierPriceChanges: [],
+      attachments: [],
     };
 
     expect(isValidPersistedState(upToDateState)).toBe(true);
+  });
+
+  it("rejeita um estado pós-fornecedores (Leva 1.1) que ainda não tem attachments (Leva 1.2)", () => {
+    const preAttachmentsState = {
+      tenants: [],
+      users: [],
+      contacts: [],
+      deals: [],
+      conversations: [],
+      messages: [],
+      appointments: [],
+      activities: [],
+      connections: [],
+      suppliers: [],
+      supplierProducts: [],
+      supplierPriceChanges: [],
+      session: null,
+      // sem attachments
+    };
+
+    expect(isValidPersistedState(preAttachmentsState)).toBe(false);
   });
 
   it("rejeita valores não-objeto (null, undefined, string, array solto)", () => {

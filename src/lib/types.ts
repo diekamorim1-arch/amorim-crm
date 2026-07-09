@@ -159,6 +159,18 @@ export interface WhatsAppConnection {
   createdAt: string;
 }
 
+export interface Attachment {
+  id: string;
+  tenantId: string;
+  contactId: string;
+  dealId?: string;
+  fileName: string;
+  fileType: string;
+  dataUrl: string;
+  uploadedBy: string;
+  uploadedAt: string;
+}
+
 export interface Session {
   userId: string;
   tenantId: string;
@@ -178,5 +190,6 @@ export interface CrmState {
   suppliers: Supplier[];
   supplierProducts: SupplierProduct[];
   supplierPriceChanges: SupplierPriceChange[];
+  attachments: Attachment[];
   session: Session | null;
 }

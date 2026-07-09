@@ -91,6 +91,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
     dispatch({
       type: "UPDATE_DEAL_FINANCIALS",
       dealId: deal.id,
+      value: deal.value,
       supplierProductId: supplierProductId || undefined,
       supplierValue: parsedSupplierValue,
       giftValue: parsedGiftValue,

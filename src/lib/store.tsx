@@ -13,6 +13,7 @@ import { newId } from "./id";
 import type {
   Activity,
   Appointment,
+  Attachment,
   Contact,
   ConnectionStatus,
   Conversation,
@@ -67,7 +68,10 @@ export type CrmAction =
   | { type: "UPDATE_SUPPLIER"; supplier: Supplier }
   | { type: "ADD_SUPPLIER_PRODUCT"; product: SupplierProduct }
   | { type: "UPDATE_SUPPLIER_PRODUCT_PRICE"; productId: string; price: number }
-  | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; supplierProductId?: string; supplierValue: number; giftValue: number }
+  | { type: "UPDATE_SUPPLIER_PRODUCT"; productId: string; name: string; price: number }
+  | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; value: number; supplierProductId?: string; supplierValue: number; giftValue: number }
+  | { type: "ADD_ATTACHMENT"; attachment: Attachment }
+  | { type: "REMOVE_ATTACHMENT"; attachmentId: string }
   | { type: "RESET_DEMO" };
 
 function countWonDeals(state: CrmState, contactId: string): number {
@@ -327,6 +331,33 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       return { ...state, supplierProducts, supplierPriceChanges: [...state.supplierPriceChanges, priceChange] };
     }
 
+    case "UPDATE_SUPPLIER_PRODUCT": {
+      const product = state.supplierProducts.find((p) => p.id === action.productId);
+      if (!product) return state;
+      const priceChanged = action.price !== product.currentPrice;
+      const now = new Date().toISOString();
+
+      const supplierProducts = state.supplierProducts.map((p) =>
+        p.id === product.id
+          ? { ...p, name: action.name, currentPrice: action.price, updatedAt: priceChanged ? now : p.updatedAt }
+          : p,
+      );
+
+      if (!priceChanged) {
+        return { ...state, supplierProducts };
+      }
+
+      const priceChange: SupplierPriceChange = {
+        id: newId("pricechg"),
+        tenantId: product.tenantId,
+        supplierProductId: product.id,
+        price: action.price,
+        changedAt: now,
+      };
+
+      return { ...state, supplierProducts, supplierPriceChanges: [...state.supplierPriceChanges, priceChange] };
+    }
+
     case "UPDATE_DEAL_FINANCIALS": {
       const deal = state.deals.find((d) => d.id === action.dealId);
       if (!deal) return state;
@@ -334,6 +365,7 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
         d.id === action.dealId
           ? {
               ...d,
+              value: action.value,
               supplierProductId: action.supplierProductId,
               supplierValue: action.supplierValue,
               giftValue: action.giftValue,
@@ -341,6 +373,14 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
           : d,
       );
       return { ...state, deals };
+    }
+
+    case "ADD_ATTACHMENT": {
+      return { ...state, attachments: [...state.attachments, action.attachment] };
+    }
+
+    case "REMOVE_ATTACHMENT": {
+      return { ...state, attachments: state.attachments.filter((a) => a.id !== action.attachmentId) };
     }
 
     case "RESET_DEMO": {
@@ -382,7 +422,8 @@ export function isValidPersistedState(parsed: unknown): parsed is CrmState {
     Array.isArray(candidate.tenants) &&
     Array.isArray(candidate.suppliers) &&
     Array.isArray(candidate.supplierProducts) &&
-    Array.isArray(candidate.supplierPriceChanges)
+    Array.isArray(candidate.supplierPriceChanges) &&
+    Array.isArray(candidate.attachments)
   );
 }
 
