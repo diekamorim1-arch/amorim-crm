@@ -101,6 +101,7 @@ export interface Deal {
   supplierProductId?: string;
   supplierValue?: number;
   giftValue?: number;
+  freightValue?: number;
 }
 
 export interface Conversation {

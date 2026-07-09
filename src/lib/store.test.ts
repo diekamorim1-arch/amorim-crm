@@ -322,7 +322,7 @@ describe("crmReducer — fornecedores e custos", () => {
     });
   });
 
-  it("UPDATE_DEAL_FINANCIALS seta value/supplierProductId/supplierValue/giftValue sem mexer no estágio", () => {
+  it("UPDATE_DEAL_FINANCIALS seta value/supplierProductId/supplierValue/giftValue/freightValue sem mexer no estágio", () => {
     const { state, product } = stateWithSupplier();
     const dealId = state.deals[0].id;
     const originalStage = state.deals[0].stage;
@@ -334,6 +334,7 @@ describe("crmReducer — fornecedores e custos", () => {
       supplierProductId: product.id,
       supplierValue: 3800,
       giftValue: 150,
+      freightValue: 80,
     });
 
     const updated = next.deals.find((d) => d.id === dealId);
@@ -341,6 +342,7 @@ describe("crmReducer — fornecedores e custos", () => {
     expect(updated?.supplierProductId).toBe(product.id);
     expect(updated?.supplierValue).toBe(3800);
     expect(updated?.giftValue).toBe(150);
+    expect(updated?.freightValue).toBe(80);
     expect(updated?.stage).toBe(originalStage);
   });
 
@@ -448,7 +450,7 @@ describe("priceHistoryForProduct", () => {
 });
 
 describe("dashboardMetrics — netProfitMonth", () => {
-  it("soma (valor - fornecedor - brindes) só dos deals ganhos no mês", () => {
+  it("soma (valor - fornecedor - brindes - frete) só dos deals ganhos no mês", () => {
     const base = baseState();
     const wonThisMonth: Deal = {
       ...base.deals[0],
@@ -458,6 +460,7 @@ describe("dashboardMetrics — netProfitMonth", () => {
       value: 5000,
       supplierValue: 3800,
       giftValue: 100,
+      freightValue: 50,
       stageChangedAt: new Date().toISOString(),
     };
     const wonNoCost: Deal = {
@@ -471,8 +474,8 @@ describe("dashboardMetrics — netProfitMonth", () => {
     const state: CrmState = { ...base, deals: [wonThisMonth, wonNoCost] };
 
     const metrics = dashboardMetrics(state);
-    // (5000 - 3800 - 100) + (2000 - 0 - 0) = 1100 + 2000
-    expect(metrics.netProfitMonth).toBe(3100);
+    // (5000 - 3800 - 100 - 50) + (2000 - 0 - 0 - 0) = 1050 + 2000
+    expect(metrics.netProfitMonth).toBe(3050);
   });
 });
 

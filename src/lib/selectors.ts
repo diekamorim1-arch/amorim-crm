@@ -150,7 +150,7 @@ export function dashboardMetrics(state: CrmState): {
     .reduce((sum, d) => sum + d.value, 0);
   const netProfitMonth = wonDeals
     .filter((d) => isSameMonth(d.stageChangedAt, now))
-    .reduce((sum, d) => sum + (d.value - (d.supplierValue ?? 0) - (d.giftValue ?? 0)), 0);
+    .reduce((sum, d) => sum + (d.value - (d.supplierValue ?? 0) - (d.giftValue ?? 0) - (d.freightValue ?? 0)), 0);
 
   const lostCount = deals.filter((d) => d.outcome === "perdido").length;
   const wonCount = wonDeals.length;

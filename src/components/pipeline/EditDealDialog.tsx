@@ -1,5 +1,5 @@
-// EditDealDialog — edita o valor da venda, o custo de fornecedor e o valor de
-// brindes de um negócio, exibindo o ganho líquido recalculado ao vivo.
+// EditDealDialog — edita o valor da venda, o custo de fornecedor, brindes e
+// frete de um negócio, exibindo o ganho líquido recalculado ao vivo.
 // Compartilhado entre o Pipeline (menu do card e duplo-clique) e a ficha do
 // cliente (aba Negócios); só é renderizado com onEditDeal presente nos dois
 // pais, que decidem a visibilidade (gestor) — este componente não checa role
@@ -47,6 +47,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
   const [supplierProductId, setSupplierProductId] = useState("");
   const [supplierValue, setSupplierValue] = useState("");
   const [giftValue, setGiftValue] = useState("");
+  const [freightValue, setFreightValue] = useState("");
 
   useEffect(() => {
     if (open && deal) {
@@ -58,6 +59,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
       setSupplierProductId(deal.supplierProductId ?? "");
       setSupplierValue(deal.supplierValue != null ? String(deal.supplierValue) : "");
       setGiftValue(String(deal.giftValue ?? 0));
+      setFreightValue(String(deal.freightValue ?? 0));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, deal]);
@@ -86,7 +88,8 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
   const parsedValue = Number(value) || 0;
   const parsedSupplierValue = Number(supplierValue) || 0;
   const parsedGiftValue = Number(giftValue) || 0;
-  const netGain = parsedValue - parsedSupplierValue - parsedGiftValue;
+  const parsedFreightValue = Number(freightValue) || 0;
+  const netGain = parsedValue - parsedSupplierValue - parsedGiftValue - parsedFreightValue;
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -99,6 +102,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
       supplierProductId: supplierProductId || undefined,
       supplierValue: parsedSupplierValue,
       giftValue: parsedGiftValue,
+      freightValue: parsedFreightValue,
     });
     toast.success(`Negócio ${deal.title} atualizado.`);
 
@@ -112,8 +116,8 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
           <DialogTitle>Editar negócio</DialogTitle>
           <DialogDescription>
             {deal
-              ? `Valor da venda, custo de fornecedor e brindes de ${deal.title}.`
-              : "Valor da venda, custo de fornecedor e brindes."}
+              ? `Valor da venda, custo de fornecedor, brindes e frete de ${deal.title}.`
+              : "Valor da venda, custo de fornecedor, brindes e frete."}
           </DialogDescription>
         </DialogHeader>
 
@@ -164,7 +168,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="deal-supplier-value">Valor do fornecedor</Label>
               <Input
@@ -188,6 +192,20 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
                 step="0.01"
                 value={giftValue}
                 onChange={(event) => setGiftValue(event.target.value)}
+                placeholder="0,00"
+                className="font-mono tabular-nums"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="deal-freight-value">Frete</Label>
+              <Input
+                id="deal-freight-value"
+                type="number"
+                min={0}
+                step="0.01"
+                value={freightValue}
+                onChange={(event) => setFreightValue(event.target.value)}
                 placeholder="0,00"
                 className="font-mono tabular-nums"
               />

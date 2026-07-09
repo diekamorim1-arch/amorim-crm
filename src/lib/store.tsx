@@ -71,7 +71,7 @@ export type CrmAction =
   | { type: "ADD_SUPPLIER_PRODUCT"; product: SupplierProduct }
   | { type: "UPDATE_SUPPLIER_PRODUCT_PRICE"; productId: string; price: number }
   | { type: "UPDATE_SUPPLIER_PRODUCT"; productId: string; name: string; price: number }
-  | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; value: number; supplierProductId?: string; supplierValue: number; giftValue: number }
+  | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; value: number; supplierProductId?: string; supplierValue: number; giftValue: number; freightValue: number }
   | { type: "ADD_ATTACHMENT"; attachment: Attachment }
   | { type: "REMOVE_ATTACHMENT"; attachmentId: string }
   | { type: "RESET_DEMO" };
@@ -371,6 +371,7 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
               supplierProductId: action.supplierProductId,
               supplierValue: action.supplierValue,
               giftValue: action.giftValue,
+              freightValue: action.freightValue,
             }
           : d,
       );
