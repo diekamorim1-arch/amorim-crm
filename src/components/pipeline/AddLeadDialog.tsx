@@ -21,14 +21,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ORIGIN_LABELS, PRODUCT_LINE_LABELS } from "@/lib/constants";
-import type { Origin, ProductLine, User } from "@/lib/types";
+import { ORIGIN_LABELS } from "@/lib/constants";
+import { tenantScope } from "@/lib/selectors";
+import { useCrm } from "@/lib/store";
+import type { Origin, User } from "@/lib/types";
 
 export interface AddLeadFormValues {
   name: string;
   whatsapp: string;
   origin: Origin;
-  productLine?: ProductLine;
+  supplierProductId?: string;
+  supplierProductName?: string;
+  supplierValue?: number;
   value: number;
   ownerId: string;
 }
@@ -44,19 +48,26 @@ interface AddLeadDialogProps {
 const EMPTY_ERRORS = { name: "", whatsapp: "" };
 
 export function AddLeadDialog({ open, onOpenChange, users, defaultOwnerId, onSubmit }: AddLeadDialogProps) {
+  const { state } = useCrm();
+  const { suppliers, supplierProducts } = tenantScope(state);
+
   const [name, setName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [origin, setOrigin] = useState<Origin>("whatsapp_direto");
-  const [productLine, setProductLine] = useState<ProductLine | "">("");
+  const [supplierId, setSupplierId] = useState("");
+  const [supplierProductId, setSupplierProductId] = useState("");
   const [value, setValue] = useState("");
   const [ownerId, setOwnerId] = useState(defaultOwnerId);
   const [errors, setErrors] = useState(EMPTY_ERRORS);
+
+  const productsForSupplier = supplierProducts.filter((p) => p.supplierId === supplierId);
 
   function reset() {
     setName("");
     setWhatsapp("");
     setOrigin("whatsapp_direto");
-    setProductLine("");
+    setSupplierId("");
+    setSupplierProductId("");
     setValue("");
     setOwnerId(defaultOwnerId);
     setErrors(EMPTY_ERRORS);
@@ -65,6 +76,13 @@ export function AddLeadDialog({ open, onOpenChange, users, defaultOwnerId, onSub
   function handleOpenChange(next: boolean) {
     if (!next) reset();
     onOpenChange(next);
+  }
+
+  function handleSupplierChange(nextSupplierId: string) {
+    setSupplierId(nextSupplierId);
+    // Fornecedor mudou: o produto selecionado antes pertencia a outro
+    // fornecedor, então não deve permanecer selecionado.
+    setSupplierProductId("");
   }
 
   function handleSubmit(event: FormEvent) {
@@ -77,11 +95,15 @@ export function AddLeadDialog({ open, onOpenChange, users, defaultOwnerId, onSub
     setErrors(nextErrors);
     if (nextErrors.name || nextErrors.whatsapp) return;
 
+    const product = supplierProducts.find((p) => p.id === supplierProductId);
+
     onSubmit({
       name: name.trim(),
       whatsapp: whatsapp.trim(),
       origin,
-      productLine: productLine || undefined,
+      supplierProductId: product?.id,
+      supplierProductName: product?.name,
+      supplierValue: product?.currentPrice,
       value: Number(value) || 0,
       ownerId: ownerId || defaultOwnerId,
     });
@@ -121,17 +143,33 @@ export function AddLeadDialog({ open, onOpenChange, users, defaultOwnerId, onSub
             {errors.whatsapp && <p className="text-xs text-destructive">{errors.whatsapp}</p>}
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <Label>Origem</Label>
+            <Select value={origin} onValueChange={(v) => setOrigin(v as Origin)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(ORIGIN_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>Origem</Label>
-              <Select value={origin} onValueChange={(v) => setOrigin(v as Origin)}>
+              <Label>Fornecedor</Label>
+              <Select value={supplierId} onValueChange={handleSupplierChange}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(ORIGIN_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.id}>
+                      {supplier.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -140,14 +178,14 @@ export function AddLeadDialog({ open, onOpenChange, users, defaultOwnerId, onSub
 
             <div className="flex flex-col gap-1.5">
               <Label>Produto de interesse</Label>
-              <Select value={productLine} onValueChange={(v) => setProductLine(v as ProductLine)}>
+              <Select value={supplierProductId} onValueChange={setSupplierProductId} disabled={!supplierId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione" />
+                  <SelectValue placeholder="Selecione um produto" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(PRODUCT_LINE_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
+                  {productsForSupplier.map((product) => (
+                    <SelectItem key={product.id} value={product.id}>
+                      {product.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

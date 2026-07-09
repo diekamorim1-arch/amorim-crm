@@ -1,7 +1,8 @@
 // QuickDealDialog — cria um negócio rápido a partir do Inbox, para o contato
-// da conversa aberta. Espelha os campos de produto/valor/pagamento/estágio
-// do AddLeadDialog (Task 4), mas não cria contato (já existe) e por isso é
-// interno a esta task — não é um export compartilhado para outras telas.
+// da conversa aberta. Produto vem do catálogo de fornecedores (cascata
+// fornecedor → produto, mesma UX do EditDealDialog/AddLeadDialog); não cria
+// contato (já existe) e por isso é interno a esta task — não é um export
+// compartilhado para outras telas.
 
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -24,10 +25,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PAYMENT_METHOD_LABELS, PRODUCT_LINE_LABELS, STAGES } from "@/lib/constants";
-import { contactById } from "@/lib/selectors";
+import { PAYMENT_METHOD_LABELS, STAGES } from "@/lib/constants";
+import { contactById, tenantScope } from "@/lib/selectors";
 import { newId, useCrm } from "@/lib/store";
-import type { Activity, Deal, PaymentMethod, ProductLine, Stage } from "@/lib/types";
+import type { Activity, Deal, PaymentMethod, Stage } from "@/lib/types";
 
 interface QuickDealDialogProps {
   open: boolean;
@@ -38,15 +39,20 @@ interface QuickDealDialogProps {
 export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDialogProps) {
   const { state, dispatch } = useCrm();
   const contact = contactById(state, contactId);
+  const { suppliers, supplierProducts } = tenantScope(state);
 
-  const [productLine, setProductLine] = useState<ProductLine>("iphone");
+  const [supplierId, setSupplierId] = useState("");
+  const [supplierProductId, setSupplierProductId] = useState("");
   const [value, setValue] = useState("");
   const [payment, setPayment] = useState<PaymentMethod>("pix");
   const [stage, setStage] = useState<Stage>("novo_lead");
   const [error, setError] = useState("");
 
+  const productsForSupplier = supplierProducts.filter((p) => p.supplierId === supplierId);
+
   function reset() {
-    setProductLine("iphone");
+    setSupplierId("");
+    setSupplierProductId("");
     setValue("");
     setPayment("pix");
     setStage("novo_lead");
@@ -58,6 +64,11 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
     onOpenChange(next);
   }
 
+  function handleSupplierChange(nextSupplierId: string) {
+    setSupplierId(nextSupplierId);
+    setSupplierProductId("");
+  }
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!state.session || !contact) return;
@@ -67,8 +78,9 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
       return;
     }
 
+    const product = supplierProducts.find((p) => p.id === supplierProductId);
+    const productLabel = product?.name ?? "Novo negócio";
     const now = new Date().toISOString();
-    const productLabel = PRODUCT_LINE_LABELS[productLine];
 
     const deal: Deal = {
       id: newId("deal"),
@@ -84,6 +96,8 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
       ownerId: contact.ownerId,
       stageChangedAt: now,
       createdAt: now,
+      supplierProductId: product?.id,
+      supplierValue: product?.currentPrice,
     };
 
     const activity: Activity = {
@@ -117,15 +131,15 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>Produto</Label>
-              <Select value={productLine} onValueChange={(v) => setProductLine(v as ProductLine)}>
+              <Label>Fornecedor</Label>
+              <Select value={supplierId} onValueChange={handleSupplierChange}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(PRODUCT_LINE_LABELS).map(([v, label]) => (
-                    <SelectItem key={v} value={v}>
-                      {label}
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.id}>
+                      {supplier.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -133,18 +147,34 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="deal-value">Valor estimado*</Label>
-              <Input
-                id="deal-value"
-                type="number"
-                min={0}
-                step="0.01"
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                placeholder="0,00"
-                aria-invalid={!!error}
-              />
+              <Label>Produto</Label>
+              <Select value={supplierProductId} onValueChange={setSupplierProductId} disabled={!supplierId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione um produto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {productsForSupplier.map((product) => (
+                    <SelectItem key={product.id} value={product.id}>
+                      {product.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="deal-value">Valor estimado*</Label>
+            <Input
+              id="deal-value"
+              type="number"
+              min={0}
+              step="0.01"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              placeholder="0,00"
+              aria-invalid={!!error}
+            />
           </div>
           {error && <p className="-mt-2 text-xs text-destructive">{error}</p>}
 

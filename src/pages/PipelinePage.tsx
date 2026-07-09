@@ -12,7 +12,7 @@ import { KanbanColumn } from "@/components/pipeline/KanbanColumn";
 import { LostDealsSheet } from "@/components/pipeline/LostDealsSheet";
 import { MarkLostDialog } from "@/components/pipeline/MarkLostDialog";
 import { Button } from "@/components/ui/button";
-import { PRODUCT_LINE_LABELS, STAGES } from "@/lib/constants";
+import { STAGES } from "@/lib/constants";
 import { contactById, conversationWithContact, currentUser, dealsByStage, lostDeals, tenantScope } from "@/lib/selectors";
 import { crmReducer, newId, useCrm } from "@/lib/store";
 import type { Activity, Contact, Conversation, Deal, LossReason, Stage } from "@/lib/types";
@@ -109,7 +109,7 @@ export function PipelinePage() {
     const now = new Date().toISOString();
     const contactId = newId("contact");
     const dealId = newId("deal");
-    const productLabel = values.productLine ? PRODUCT_LINE_LABELS[values.productLine] : "Novo negócio";
+    const productLabel = values.supplierProductName ?? "Novo negócio";
 
     const contact: Contact = {
       id: contactId,
@@ -117,7 +117,7 @@ export function PipelinePage() {
       name: values.name,
       whatsapp: values.whatsapp,
       origin: values.origin,
-      interests: values.productLine ? [values.productLine] : [],
+      interests: [],
       tags: [],
       journeyStatus: "lead",
       ownerId: values.ownerId,
@@ -140,6 +140,8 @@ export function PipelinePage() {
       ownerId: values.ownerId,
       stageChangedAt: now,
       createdAt: now,
+      supplierProductId: values.supplierProductId,
+      supplierValue: values.supplierValue,
     };
 
     const activity: Activity = {
