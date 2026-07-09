@@ -58,6 +58,7 @@ export function DealCard({
         event.dataTransfer.setData("text/plain", deal.id);
         event.dataTransfer.effectAllowed = "move";
       }}
+      onDoubleClick={() => onEditDeal?.(deal)}
       className="flex cursor-grab flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-sm transition-colors active:cursor-grabbing hover:border-primary/40"
     >
       <div className="flex items-start justify-between gap-2">

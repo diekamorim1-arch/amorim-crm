@@ -1,8 +1,9 @@
-// EditDealDialog — edita o custo de fornecedor e o valor de brindes de um
-// negócio, exibindo o ganho líquido recalculado ao vivo. Compartilhado entre
-// o Pipeline (menu do card) e a ficha do cliente (aba Negócios); só é
-// renderizado com onEditDeal presente nos dois pais, que decidem a
-// visibilidade (gestor) — este componente não checa role nenhuma.
+// EditDealDialog — edita o valor da venda, o custo de fornecedor e o valor de
+// brindes de um negócio, exibindo o ganho líquido recalculado ao vivo.
+// Compartilhado entre o Pipeline (menu do card e duplo-clique) e a ficha do
+// cliente (aba Negócios); só é renderizado com onEditDeal presente nos dois
+// pais, que decidem a visibilidade (gestor) — este componente não checa role
+// nenhuma.
 
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -41,6 +42,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
   const { state, dispatch } = useCrm();
   const { suppliers, supplierProducts } = tenantScope(state);
 
+  const [value, setValue] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [supplierProductId, setSupplierProductId] = useState("");
   const [supplierValue, setSupplierValue] = useState("");
@@ -51,6 +53,7 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
       const product = deal.supplierProductId
         ? supplierProducts.find((p) => p.id === deal.supplierProductId)
         : undefined;
+      setValue(String(deal.value));
       setSupplierId(product?.supplierId ?? "");
       setSupplierProductId(deal.supplierProductId ?? "");
       setSupplierValue(deal.supplierValue != null ? String(deal.supplierValue) : "");
@@ -80,9 +83,10 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
     }
   }
 
+  const parsedValue = Number(value) || 0;
   const parsedSupplierValue = Number(supplierValue) || 0;
   const parsedGiftValue = Number(giftValue) || 0;
-  const netGain = deal ? deal.value - parsedSupplierValue - parsedGiftValue : 0;
+  const netGain = parsedValue - parsedSupplierValue - parsedGiftValue;
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -91,12 +95,12 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
     dispatch({
       type: "UPDATE_DEAL_FINANCIALS",
       dealId: deal.id,
-      value: deal.value,
+      value: parsedValue,
       supplierProductId: supplierProductId || undefined,
       supplierValue: parsedSupplierValue,
       giftValue: parsedGiftValue,
     });
-    toast.success(`Custos de ${deal.title} atualizados.`);
+    toast.success(`Negócio ${deal.title} atualizado.`);
 
     handleOpenChange(false);
   }
@@ -107,11 +111,27 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
         <DialogHeader>
           <DialogTitle>Editar negócio</DialogTitle>
           <DialogDescription>
-            {deal ? `Custo de fornecedor e brindes de ${deal.title}.` : "Custo de fornecedor e brindes."}
+            {deal
+              ? `Valor da venda, custo de fornecedor e brindes de ${deal.title}.`
+              : "Valor da venda, custo de fornecedor e brindes."}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="deal-sale-value">Valor da venda</Label>
+            <Input
+              id="deal-sale-value"
+              type="number"
+              min={0}
+              step="0.01"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              placeholder="0,00"
+              className="font-mono tabular-nums"
+            />
+          </div>
+
           <div className="flex flex-col gap-1.5">
             <Label>Fornecedor</Label>
             <Select value={supplierId} onValueChange={handleSupplierChange}>
