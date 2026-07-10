@@ -1,18 +1,19 @@
-// ConnectionCard — card de uma conexão WhatsApp: dono, número e status, com
-// pulsação verde reservada ao estado "conectado" (verde é semântico do
+// ConnectionCard — card de uma conexão WhatsApp real: dono, número e status,
+// com pulsação verde reservada ao estado "conectado" (verde é semântico do
 // WhatsApp/sucesso — nunca decoração, ver docs/design-direction.md).
 
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 
 import { PairingDialog } from "./PairingDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { api, type ApiConnection } from "@/lib/apiClient";
 import { CONNECTION_STATUS_LABELS } from "@/lib/constants";
 import { relativeTime } from "@/lib/format";
-import type { CrmAction, Dispatch } from "@/lib/store";
-import type { ConnectionStatus, User, WhatsAppConnection } from "@/lib/types";
+import type { ConnectionStatus } from "@/lib/types";
 
 function initialsOf(name: string): string {
   return name
@@ -32,34 +33,44 @@ const STATUS_DOT_CLASS: Record<ConnectionStatus, string> = {
 };
 
 interface ConnectionCardProps {
-  connection: WhatsAppConnection;
-  owner: User;
-  dispatch: Dispatch<CrmAction>;
+  connection: ApiConnection;
+  ownerName: string;
+  ownerAvatarColor: string;
+  onChanged: (updated: ApiConnection) => void;
 }
 
-export function ConnectionCard({ connection, owner, dispatch }: ConnectionCardProps) {
+export function ConnectionCard({ connection, ownerName, ownerAvatarColor, onChanged }: ConnectionCardProps) {
   const [pairingOpen, setPairingOpen] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const isConnected = connection.status === "conectado";
 
-  function handleToggle() {
-    if (isConnected) {
-      dispatch({ type: "SET_CONNECTION_STATUS", connectionId: connection.id, status: "desconectado" });
+  async function handleToggle() {
+    if (!isConnected) {
+      setPairingOpen(true);
       return;
     }
-    setPairingOpen(true);
+    setDisconnecting(true);
+    try {
+      const updated = await api.disconnectConnection(connection.id);
+      onChanged(updated);
+    } catch {
+      toast.error("Não foi possível desconectar. Tente novamente.");
+    } finally {
+      setDisconnecting(false);
+    }
   }
 
   return (
     <Card className="rounded-xl">
       <CardHeader className="flex-row items-center gap-3 space-y-0">
         <Avatar size="lg">
-          <AvatarFallback style={{ backgroundColor: owner.avatarColor, color: "#fff" }}>
-            {initialsOf(owner.name)}
+          <AvatarFallback style={{ backgroundColor: ownerAvatarColor, color: "#fff" }}>
+            {initialsOf(ownerName)}
           </AvatarFallback>
         </Avatar>
         <div className="flex flex-col gap-0.5">
-          <span className="font-medium text-foreground">{owner.name}</span>
-          <span className="font-mono text-sm text-muted-foreground">{connection.phone}</span>
+          <span className="font-medium text-foreground">{ownerName}</span>
+          <span className="font-mono text-sm text-muted-foreground">{connection.phone || "Sem número ainda"}</span>
         </div>
       </CardHeader>
 
@@ -67,8 +78,8 @@ export function ConnectionCard({ connection, owner, dispatch }: ConnectionCardPr
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className={`size-2.5 rounded-full ${STATUS_DOT_CLASS[connection.status]}`} aria-hidden />
           <span className="text-foreground">{CONNECTION_STATUS_LABELS[connection.status]}</span>
-          {isConnected && connection.connectedAt && (
-            <span className="text-muted-foreground">· Conectado desde {relativeTime(connection.connectedAt)}</span>
+          {isConnected && connection.connected_at && (
+            <span className="text-muted-foreground">· Conectado desde {relativeTime(connection.connected_at)}</span>
           )}
         </div>
 
@@ -81,8 +92,8 @@ export function ConnectionCard({ connection, owner, dispatch }: ConnectionCardPr
       </CardContent>
 
       <CardFooter>
-        <Button variant={isConnected ? "outline" : "default"} onClick={handleToggle}>
-          {isConnected ? "Desconectar" : "Conectar"}
+        <Button variant={isConnected ? "outline" : "default"} onClick={handleToggle} disabled={disconnecting}>
+          {isConnected ? (disconnecting ? "Desconectando…" : "Desconectar") : "Conectar"}
         </Button>
       </CardFooter>
 
@@ -90,8 +101,8 @@ export function ConnectionCard({ connection, owner, dispatch }: ConnectionCardPr
         open={pairingOpen}
         onOpenChange={setPairingOpen}
         connection={connection}
-        ownerName={owner.name}
-        dispatch={dispatch}
+        ownerName={ownerName}
+        onChanged={onChanged}
       />
     </Card>
   );

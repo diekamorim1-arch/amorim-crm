@@ -1,24 +1,19 @@
-// PairingDialog — simula o fluxo de pareamento do WhatsApp Web.
+// PairingDialog — pareamento real via Evolution API.
 //
-// Há dois casos ao abrir:
-// - Pareamento novo (conexão "desconectado" quando o diálogo abre): entra em
-//   "pareando" imediatamente e conecta sozinha em 4s (check verde + toast),
-//   fechando ~1,5s depois. Esse é o caminho padrão do botão "Conectar".
-// - Pareamento retomado (a conexão já estava em "pareando" quando o diálogo
-//   abriu — ex.: o usuário fechou o diálogo anterior, navegou para outra
-//   página ou recarregou antes de conectar, perdendo os timers em memória):
-//   não reinicia o "conectar em 4s" sozinho — só arma os 20s de expiração.
-//   Se nada acontecer nesse tempo, mostra "Código expirado"; "Gerar novo
-//   código" reinicia do zero, equivalente a um novo pareamento (4s + 1,5s).
+// Ao abrir: se a conexão está "desconectado", chama pairConnection (cria a
+// instância na Evolution) e começa a pollar getQrCode; se já está
+// "pareando" (retomando um diálogo fechado antes de conectar), só retoma o
+// polling sem recriar a instância. O polling para sozinho quando o status
+// vira "conectado" — atualizado pelo webhook connection.update no backend,
+// não por um timer local (diferença chave do fluxo simulado anterior).
 //
-// Os timers de pareamento vivem só aqui — nenhum outro componente precisa
-// saber deles.
+// Fechar antes de conectar desconecta a instância pendente (evita deixá-la
+// presa em "pareando" na Evolution sem ninguém olhando o QR).
 
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { FakeQr } from "./FakeQr";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,12 +22,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { CrmAction, Dispatch } from "@/lib/store";
-import type { WhatsAppConnection } from "@/lib/types";
+import { api, type ApiConnection } from "@/lib/apiClient";
 
-const CONNECT_DELAY_MS = 4000;
-const CLOSE_DELAY_MS = 1500;
-const EXPIRE_DELAY_MS = 20000;
+const POLL_INTERVAL_MS = 4000;
 
 const STEPS = [
   "Abra o WhatsApp no seu celular.",
@@ -44,75 +36,94 @@ const STEPS = [
 interface PairingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  connection: WhatsAppConnection;
+  connection: ApiConnection;
   ownerName: string;
-  dispatch: Dispatch<CrmAction>;
+  onChanged: (updated: ApiConnection) => void;
 }
 
-export function PairingDialog({ open, onOpenChange, connection, ownerName, dispatch }: PairingDialogProps) {
-  const [connected, setConnected] = useState(false);
-  const [expired, setExpired] = useState(false);
+export function PairingDialog({ open, onOpenChange, connection, ownerName, onChanged }: PairingDialogProps) {
+  const [status, setStatus] = useState<ApiConnection["status"]>(connection.status);
+  const [qrcode, setQrcode] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const connectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const expireTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  function clearTimers() {
-    clearTimeout(connectTimer.current);
-    clearTimeout(closeTimer.current);
-    clearTimeout(expireTimer.current);
-  }
-
-  /** Pareamento novo (ou "Gerar novo código"): conecta sozinho em 4s + fecha em +1,5s. */
-  function startFreshPairing() {
-    clearTimers();
-    setExpired(false);
-    dispatch({ type: "SET_CONNECTION_STATUS", connectionId: connection.id, status: "pareando" });
-
-    connectTimer.current = setTimeout(() => {
-      dispatch({ type: "SET_CONNECTION_STATUS", connectionId: connection.id, status: "conectado" });
-      setConnected(true);
-      toast.success(`WhatsApp de ${ownerName} conectado.`);
-      closeTimer.current = setTimeout(() => {
-        onOpenChange(false);
-      }, CLOSE_DELAY_MS);
-    }, CONNECT_DELAY_MS);
-  }
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   useEffect(() => {
     if (!open) {
-      clearTimers();
+      clearInterval(pollRef.current);
       return;
     }
 
-    setConnected(false);
-    setExpired(false);
+    let cancelled = false;
+    setStatus(connection.status);
+    setQrcode(null);
+    setError("");
 
-    if (connection.status === "pareando") {
-      // Pareamento retomado: os timers da tentativa anterior já se perderam
-      // (diálogo fechado, navegação, reload) — não reconecta sozinho, só
-      // arma a expiração de 20s.
-      expireTimer.current = setTimeout(() => setExpired(true), EXPIRE_DELAY_MS);
-    } else {
-      startFreshPairing();
+    async function pollQrCode() {
+      try {
+        const result = await api.getQrCode(connection.id);
+        if (cancelled) return;
+        setQrcode(result.qrcode);
+        setStatus(result.status);
+        if (result.status === "conectado") {
+          clearInterval(pollRef.current);
+          onChanged({ ...connection, status: "conectado" });
+          toast.success(`WhatsApp de ${ownerName} conectado.`);
+        }
+      } catch {
+        // Silencioso — falha pontual de rede não deve interromper o
+        // pareamento; o próximo tick tenta de novo.
+      }
     }
 
-    return clearTimers;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, connection.id, dispatch, ownerName, onOpenChange]);
+    async function run() {
+      setLoading(true);
+      try {
+        if (connection.status === "desconectado") {
+          const paired = await api.pairConnection(connection.id);
+          if (cancelled) return;
+          setStatus(paired.status);
+          onChanged(paired);
+        }
+        if (!cancelled && connection.status !== "conectado") {
+          await pollQrCode();
+          pollRef.current = setInterval(pollQrCode, POLL_INTERVAL_MS);
+        }
+      } catch {
+        if (!cancelled) setError("Não foi possível iniciar o pareamento. Tente novamente.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
 
-  function handleOpenChange(next: boolean) {
-    // Fechar antes de conectar cancela o pareamento — não deixa a conexão
-    // presa em "pareando" sem diálogo nenhum para retomar.
-    if (!next && !connected) {
-      dispatch({ type: "SET_CONNECTION_STATUS", connectionId: connection.id, status: "desconectado" });
+    run();
+
+    return () => {
+      cancelled = true;
+      clearInterval(pollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, connection.id]);
+
+  async function handleOpenChange(next: boolean) {
+    if (!next && status !== "conectado") {
+      // Fechar antes de conectar cancela o pareamento — não deixa a
+      // instância presa em "pareando" na Evolution sem o diálogo aberto.
+      try {
+        const updated = await api.disconnectConnection(connection.id);
+        onChanged(updated);
+      } catch {
+        // Falha ao desconectar não deve travar o fechamento do diálogo.
+      }
     }
     onOpenChange(next);
   }
 
-  function handleRegenerate() {
-    // Equivalente a um novo pareamento: reinicia o ciclo de 4s + 1,5s.
-    startFreshPairing();
+  function handleRetry() {
+    setError("");
+    onOpenChange(false);
+    setTimeout(() => onOpenChange(true), 0);
   }
 
   return (
@@ -120,25 +131,31 @@ export function PairingDialog({ open, onOpenChange, connection, ownerName, dispa
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Conectar WhatsApp de {ownerName}</DialogTitle>
-          <DialogDescription>Escaneie o código com o celular para parear este número (simulado).</DialogDescription>
+          <DialogDescription>Escaneie o código com o celular para parear este número.</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
           <div className="flex size-[176px] shrink-0 items-center justify-center">
-            {connected ? (
+            {status === "conectado" ? (
               <div className="flex size-[176px] flex-col items-center justify-center gap-2 rounded-md bg-whatsapp/10">
                 <CheckCircle2 className="size-12 animate-in zoom-in text-whatsapp" />
                 <span className="text-sm font-medium text-whatsapp">Conectado</span>
               </div>
-            ) : expired ? (
+            ) : error ? (
               <div className="flex size-[176px] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-border bg-muted text-center">
-                <span className="px-4 text-sm text-muted-foreground">Código expirado</span>
-                <Button size="sm" variant="outline" onClick={handleRegenerate}>
-                  Gerar novo código
+                <span className="px-4 text-sm text-muted-foreground">{error}</span>
+                <Button size="sm" variant="outline" onClick={handleRetry}>
+                  Tentar de novo
                 </Button>
               </div>
+            ) : qrcode ? (
+              <img src={qrcode} alt="Código de pareamento" className="size-[176px] rounded-md bg-white p-2" />
             ) : (
-              <FakeQr seed={connection.userId} />
+              <div className="flex size-[176px] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted p-4 text-center">
+                <span className="text-sm text-muted-foreground">
+                  {loading ? "Gerando código…" : "Aguardando código da Evolution API…"}
+                </span>
+              </div>
             )}
           </div>
 
