@@ -1,4 +1,5 @@
 import { STAGES, STALE_DAYS } from "./constants";
+import { monthLabel } from "./format";
 import type {
   Activity,
   Appointment,
@@ -7,6 +8,7 @@ import type {
   Conversation,
   CrmState,
   Deal,
+  Expense,
   LossReason,
   Message,
   Origin,
@@ -34,6 +36,7 @@ export function tenantScope(state: CrmState): {
   supplierProducts: SupplierProduct[];
   supplierPriceChanges: SupplierPriceChange[];
   attachments: Attachment[];
+  expenses: Expense[];
 } {
   const tenantId = state.session?.tenantId;
   if (!tenantId) {
@@ -50,6 +53,7 @@ export function tenantScope(state: CrmState): {
       supplierProducts: [],
       supplierPriceChanges: [],
       attachments: [],
+      expenses: [],
     };
   }
 
@@ -66,6 +70,7 @@ export function tenantScope(state: CrmState): {
     supplierProducts: state.supplierProducts.filter((p) => p.tenantId === tenantId),
     supplierPriceChanges: state.supplierPriceChanges.filter((p) => p.tenantId === tenantId),
     attachments: state.attachments.filter((a) => a.tenantId === tenantId),
+    expenses: state.expenses.filter((e) => e.tenantId === tenantId),
   };
 }
 
@@ -107,9 +112,81 @@ export function conversationWithContact(state: CrmState, contactId: string): Con
   return tenantScope(state).conversations.find((c) => c.contactId === contactId);
 }
 
-function isSameMonth(iso: string, reference: Date): boolean {
+export function isSameMonth(iso: string, reference: Date): boolean {
   const d = new Date(iso);
   return d.getFullYear() === reference.getFullYear() && d.getMonth() === reference.getMonth();
+}
+
+/** Chave ordenável/comparável de mês, ex.: "2026-07" — usada tanto no
+ * histórico mensal do Dashboard quanto no filtro de mês de Lucro por Cliente
+ * e nos fechamentos mensais de Gastos. */
+export function monthKeyOf(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Leads (contatos) cujo primeiro contato caiu no mês corrente — versão em
+ * lista de `dashboardMetrics().newLeadsMonth` (só a contagem), pro drill-down
+ * do card "Leads novos no mês" no Dashboard. */
+export function newLeadsThisMonth(state: CrmState): Contact[] {
+  const now = new Date();
+  return tenantScope(state).contacts.filter((c) => isSameMonth(c.firstContactAt, now));
+}
+
+/** Negócios ganhos num mês específico (`monthKey` no formato "YYYY-MM"),
+ * já pareados com o contato — base do drill-down "Clientes que compraram no
+ * mês" e da tabela "Lucro líquido por cliente" (filtrável por mês). */
+export function wonDealsForMonth(state: CrmState, monthKey: string): { contact: Contact; deal: Deal }[] {
+  const { contacts, deals } = tenantScope(state);
+  const rows: { contact: Contact; deal: Deal }[] = [];
+  for (const deal of deals) {
+    if (deal.outcome !== "ganho" || monthKeyOf(deal.stageChangedAt) !== monthKey) continue;
+    const contact = contacts.find((c) => c.id === deal.contactId);
+    if (contact) rows.push({ contact, deal });
+  }
+  return rows.sort((a, b) => new Date(b.deal.stageChangedAt).getTime() - new Date(a.deal.stageChangedAt).getTime());
+}
+
+/** Negócios ganhos no mês corrente — atalho de `wonDealsForMonth` pro
+ * drill-down do card "Clientes que compraram no mês" no Dashboard. */
+export function customersWonThisMonth(state: CrmState): { contact: Contact; deal: Deal }[] {
+  return wonDealsForMonth(state, monthKeyOf(new Date().toISOString()));
+}
+
+/** Lucro líquido de um negócio ganho: venda - custo de fornecedor - brindes -
+ * frete. Mesma fórmula usada ao vivo no EditDealDialog e em
+ * dashboardMetrics().netProfitMonth — centralizada aqui pra não divergir. */
+export function dealNetProfit(deal: Deal): number {
+  return deal.value - (deal.supplierValue ?? 0) - (deal.giftValue ?? 0) - (deal.freightValue ?? 0);
+}
+
+/** Série mensal (mais antigo primeiro) dos últimos `monthsBack` meses,
+ * incluindo o corrente — agregada a partir de contacts/deals já carregados,
+ * sem precisar de tabela/endpoint novo. */
+export function monthlyHistory(
+  state: CrmState,
+  monthsBack = 12,
+): { month: string; monthKey: string; newLeads: number; revenue: number; netProfit: number }[] {
+  const { contacts, deals } = tenantScope(state);
+  const now = new Date();
+  const months: { month: string; monthKey: string; newLeads: number; revenue: number; netProfit: number }[] = [];
+
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const ref = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const newLeads = contacts.filter((c) => isSameMonth(c.firstContactAt, ref)).length;
+    const wonThisMonth = deals.filter((d) => d.outcome === "ganho" && isSameMonth(d.stageChangedAt, ref));
+    const revenue = wonThisMonth.reduce((sum, d) => sum + d.value, 0);
+    const netProfit = wonThisMonth.reduce((sum, d) => sum + dealNetProfit(d), 0);
+    months.push({
+      month: monthLabel(ref),
+      monthKey: monthKeyOf(ref.toISOString()),
+      newLeads,
+      revenue,
+      netProfit,
+    });
+  }
+
+  return months;
 }
 
 /** Histórico de preços de um produto de fornecedor, mais recente primeiro. */
@@ -150,7 +227,7 @@ export function dashboardMetrics(state: CrmState): {
     .reduce((sum, d) => sum + d.value, 0);
   const netProfitMonth = wonDeals
     .filter((d) => isSameMonth(d.stageChangedAt, now))
-    .reduce((sum, d) => sum + (d.value - (d.supplierValue ?? 0) - (d.giftValue ?? 0) - (d.freightValue ?? 0)), 0);
+    .reduce((sum, d) => sum + dealNetProfit(d), 0);
 
   const lostCount = deals.filter((d) => d.outcome === "perdido").length;
   const wonCount = wonDeals.length;

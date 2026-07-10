@@ -4,7 +4,6 @@ import {
   useEffect,
   useMemo,
   useReducer,
-  useRef,
   useState,
   type Dispatch,
   type JSX,
@@ -14,6 +13,7 @@ import { toast } from "sonner";
 import { buildSeed } from "./seed";
 import { newId } from "./id";
 import { supabase } from "./supabaseClient";
+import { api, mapAppointment, mapContact, mapDeal } from "./apiClient";
 import type {
   Activity,
   Appointment,
@@ -23,6 +23,7 @@ import type {
   Conversation,
   CrmState,
   Deal,
+  Expense,
   LossReason,
   Message,
   Stage,
@@ -32,8 +33,6 @@ import type {
   Tenant,
   User,
 } from "./types";
-
-const STORAGE_KEY = "amorim-crm-state-v1";
 
 // Re-exportado para consumidores que já importam `newId` de "@/lib/store"
 // (a maioria dos componentes) — a implementação real vive em "./id" para
@@ -76,7 +75,10 @@ export type CrmAction =
   | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; value: number; supplierProductId?: string; supplierValue: number; giftValue: number; freightValue: number }
   | { type: "ADD_ATTACHMENT"; attachment: Attachment }
   | { type: "REMOVE_ATTACHMENT"; attachmentId: string }
+  | { type: "ADD_EXPENSE"; expense: Expense }
+  | { type: "REMOVE_EXPENSE"; expenseId: string }
   | { type: "SET_AUTH_SESSION"; user: User }
+  | { type: "SET_REMOTE_DATA"; contacts: Contact[]; deals: Deal[]; appointments: Appointment[] }
   | { type: "RESET_DEMO" };
 
 function countWonDeals(state: CrmState, contactId: string): number {
@@ -90,11 +92,15 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
     case "SWITCH_SESSION": {
       const user = state.users.find((u) => u.id === action.userId);
       if (!user) return state;
-      return { ...state, session: { userId: user.id, tenantId: user.tenantId ?? "", role: user.role } };
+      return {
+        ...state,
+        session: { userId: user.id, tenantId: user.tenantId ?? "", role: user.role },
+        isRealSession: false,
+      };
     }
 
     case "LOGOUT": {
-      return { ...state, session: null };
+      return { ...state, session: null, isRealSession: false };
     }
 
     case "ENTER_TENANT_AS_GESTOR": {
@@ -389,6 +395,14 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       return { ...state, attachments: state.attachments.filter((a) => a.id !== action.attachmentId) };
     }
 
+    case "ADD_EXPENSE": {
+      return { ...state, expenses: [...state.expenses, action.expense] };
+    }
+
+    case "REMOVE_EXPENSE": {
+      return { ...state, expenses: state.expenses.filter((e) => e.id !== action.expenseId) };
+    }
+
     case "SET_AUTH_SESSION": {
       // Login real (Supabase Auth): injeta/atualiza o User derivado do
       // profile no array local para que currentUser()/tenantScope() — que
@@ -402,7 +416,12 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
         ...state,
         users,
         session: { userId: action.user.id, tenantId: action.user.tenantId ?? "", role: action.user.role },
+        isRealSession: true,
       };
+    }
+
+    case "SET_REMOTE_DATA": {
+      return { ...state, contacts: action.contacts, deals: action.deals, appointments: action.appointments };
     }
 
     case "RESET_DEMO": {
@@ -426,60 +445,57 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
   }
 }
 
-/**
- * Valida se um objeto desserializado do localStorage tem o formato mínimo
- * esperado de um `CrmState` para ser usado com segurança. Além das coleções
- * originais, exige `suppliers`/`supplierProducts`/`supplierPriceChanges`
- * (adicionadas na Task 1 deste mini-plano): um blob salvo por uma sessão
- * anterior a essa mudança teria `tenants` como array (passando numa checagem
- * mais fraca) mas careceria totalmente dessas 3 coleções novas — e a
- * primeira chamada a `tenantScope()` quebraria com TypeError ao chamar
- * `.filter()` em `undefined`. Exportada como função pura para ser testável
- * sem precisar mockar `window.localStorage`.
- */
-export function isValidPersistedState(parsed: unknown): parsed is CrmState {
-  if (!parsed || typeof parsed !== "object") return false;
-  const candidate = parsed as Partial<CrmState>;
-  return (
-    Array.isArray(candidate.tenants) &&
-    Array.isArray(candidate.suppliers) &&
-    Array.isArray(candidate.supplierProducts) &&
-    Array.isArray(candidate.supplierPriceChanges) &&
-    Array.isArray(candidate.attachments)
-  );
-}
-
-function loadInitialState(): CrmState {
-  if (typeof window === "undefined") return buildSeed();
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return buildSeed();
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isValidPersistedState(parsed)) return buildSeed();
-    return parsed;
-  } catch {
-    return buildSeed();
-  }
+interface RemoteData {
+  contacts: Contact[];
+  deals: Deal[];
+  appointments: Appointment[];
 }
 
 interface CrmContextValue {
   state: CrmState;
   dispatch: Dispatch<CrmAction>;
+  /** Refaz o fetch de contacts/deals/appointments do backend real e substitui
+   * essas 3 coleções no state (SET_REMOTE_DATA). Só faz sentido — e só deve
+   * ser chamada — quando state.isRealSession é true; usada por todo componente
+   * que muda esses dados numa sessão real, logo após a chamada de API que
+   * persistiu a mudança. Retorna os dados já mapeados para uso imediato pelo
+   * chamador (ex.: ler o journeyStatus atualizado de um contato sem esperar
+   * o próximo render). */
+  refreshCrmData: () => Promise<RemoteData>;
+  /** Incrementado a cada refreshCrmData() bem-sucedido — permite que telas
+   * fora do fluxo contacts/deals/appointments (ex.: ActivityTimeline, que
+   * busca activities por contactId direto da API) saibam quando refazer o
+   * próprio fetch, sem precisar duplicar contacts/deals/appointments no
+   * state global só para isso. */
+  dataVersion: number;
 }
 
 const CrmContext = createContext<CrmContextValue | null>(null);
 
 export function CrmProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [state, dispatch] = useReducer(crmReducer, undefined, loadInitialState);
-  // Evita spammar o toast de quota excedida a cada mudança de estado enquanto
-  // o problema persiste: só avisa uma vez por "sequência" de falhas, e reseta
-  // assim que um setItem volta a funcionar.
-  const hasWarnedQuotaRef = useRef(false);
+  const [state, dispatch] = useReducer(crmReducer, undefined, buildSeed);
   // Só true depois da 1ª checagem de sessão do Supabase (getSession inicial).
   // Sem isso, o guard de AppShell veria state.session como estava persistido
   // (ok pro modo demo) mas um usuário real autenticado sofreria um flash de
   // redirect pro /login enquanto a sessão real ainda está sendo resolvida.
   const [authReady, setAuthReady] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
+
+  async function refreshCrmData(): Promise<RemoteData> {
+    const [apiContacts, apiDeals, apiAppointments] = await Promise.all([
+      api.listContacts(),
+      api.listDeals(),
+      api.listAppointments(),
+    ]);
+    const data: RemoteData = {
+      contacts: apiContacts.map(mapContact),
+      deals: apiDeals.map(mapDeal),
+      appointments: apiAppointments.map(mapAppointment),
+    };
+    dispatch({ type: "SET_REMOTE_DATA", ...data });
+    setDataVersion((v) => v + 1);
+    return data;
+  }
 
   useEffect(() => {
     let active = true;
@@ -507,6 +523,11 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
         createdAt: profileRow.created_at,
       };
       dispatch({ type: "SET_AUTH_SESSION", user });
+      try {
+        await refreshCrmData();
+      } catch {
+        toast.error("Não foi possível carregar seus dados do servidor. Tente recarregar a página.");
+      }
     }
 
     supabase.auth.getSession().then(({ data }) => {
@@ -527,29 +548,10 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
       active = false;
       listener.subscription.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      hasWarnedQuotaRef.current = false;
-    } catch (error) {
-      const isQuotaExceeded =
-        error instanceof DOMException &&
-        (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
-
-      if (isQuotaExceeded) {
-        if (!hasWarnedQuotaRef.current) {
-          hasWarnedQuotaRef.current = true;
-          toast.error("Armazenamento local cheio — as últimas alterações podem não ter sido salvas.");
-        }
-      } else {
-        // localStorage indisponível (modo privado, etc.) — segue sem persistir.
-      }
-    }
-  }, [state]);
-
-  const value = useMemo(() => ({ state, dispatch }), [state]);
+  const value = useMemo(() => ({ state, dispatch, refreshCrmData, dataVersion }), [state, dataVersion]);
 
   if (!authReady) {
     return (

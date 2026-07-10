@@ -6,6 +6,7 @@ import { AgendaPage } from "@/pages/AgendaPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { ContactsPage } from "@/pages/ContactsPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { GastosPage } from "@/pages/GastosPage";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
@@ -35,6 +36,7 @@ function App() {
         <Route path="/agenda" element={<AgendaPage />} />
         <Route path="/fornecedores" element={<SuppliersPage />} />
         <Route path="/fornecedores/:supplierId" element={<SupplierDetailPage />} />
+        <Route path="/gastos" element={<GastosPage />} />
         <Route path="/config" element={<SettingsPage />} />
         <Route path="/whatsapp" element={<WhatsAppPage />} />
         <Route path="/admin" element={<AdminTenantsPage />} />

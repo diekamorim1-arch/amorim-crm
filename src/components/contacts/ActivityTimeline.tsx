@@ -1,7 +1,10 @@
 // ActivityTimeline — histórico cronológico (mais recente primeiro) de um
-// contato: mensagens, mudanças de estágio, notas, agendamentos e vendas. Lê
-// as activities diretamente do store (useCrm), então basta passar o contactId.
+// contato: mensagens, mudanças de estágio, notas, agendamentos e vendas. Numa
+// sessão real busca as activities direto da API (não há endpoint de listagem
+// por tenant inteiro, só por contactId — daí o fetch ser local a este
+// componente); no modo demo continua lendo do store como antes.
 
+import { useEffect, useState } from "react";
 import {
   ArrowRightLeft,
   CalendarClock,
@@ -11,10 +14,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { api, mapActivity } from "@/lib/apiClient";
 import { relativeTime } from "@/lib/format";
 import { tenantScope } from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
-import type { ActivityType } from "@/lib/types";
+import type { Activity, ActivityType } from "@/lib/types";
 
 const ACTIVITY_ICONS: Record<ActivityType, LucideIcon> = {
   mensagem: MessageCircle,
@@ -29,10 +33,23 @@ interface ActivityTimelineProps {
 }
 
 export function ActivityTimeline({ contactId }: ActivityTimelineProps) {
-  const { state } = useCrm();
-  const activities = tenantScope(state)
-    .activities.filter((activity) => activity.contactId === contactId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const { state, dataVersion } = useCrm();
+  const [remoteActivities, setRemoteActivities] = useState<Activity[]>([]);
+
+  useEffect(() => {
+    if (!state.isRealSession) return;
+    let active = true;
+    api.listActivities(contactId).then((rows) => {
+      if (active) setRemoteActivities(rows.map(mapActivity));
+    });
+    return () => {
+      active = false;
+    };
+  }, [contactId, state.isRealSession, dataVersion]);
+
+  const activities = (
+    state.isRealSession ? remoteActivities : tenantScope(state).activities.filter((a) => a.contactId === contactId)
+  ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   if (activities.length === 0) {
     return (

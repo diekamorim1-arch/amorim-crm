@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { daysAgo } from "./format";
-import { crmReducer, isValidPersistedState } from "./store";
+import { crmReducer } from "./store";
 import { buildSeed } from "./seed";
 import { currentUser, dashboardMetrics, dealsByStage, isStale, lostDeals, priceHistoryForProduct, tenantScope } from "./selectors";
-import type { Attachment, Contact, Conversation, CrmState, Deal, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
+import type { Attachment, Contact, Conversation, CrmState, Deal, Expense, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
 
 function baseState(): CrmState {
   const now = new Date().toISOString();
@@ -82,7 +82,9 @@ function baseState(): CrmState {
     supplierProducts: [],
     supplierPriceChanges: [],
     attachments: [],
+    expenses: [],
     session: { userId: owner.id, tenantId: tenant.id, role: "atendente" },
+    isRealSession: false,
   };
 }
 
@@ -414,6 +416,37 @@ describe("crmReducer — anexos", () => {
   });
 });
 
+describe("crmReducer — gastos", () => {
+  it("ADD_EXPENSE adiciona um gasto", () => {
+    const base = baseState();
+    const expense: Expense = {
+      id: "expense_1",
+      tenantId: base.tenants[0].id,
+      description: "Caixas de embalagem",
+      value: 120,
+      userId: base.users[0].id,
+      createdAt: new Date().toISOString(),
+    };
+    const next = crmReducer(base, { type: "ADD_EXPENSE", expense });
+    expect(next.expenses).toContainEqual(expense);
+  });
+
+  it("REMOVE_EXPENSE remove o gasto pelo id", () => {
+    const base = baseState();
+    const expense: Expense = {
+      id: "expense_1",
+      tenantId: base.tenants[0].id,
+      description: "Caixas de embalagem",
+      value: 120,
+      userId: base.users[0].id,
+      createdAt: new Date().toISOString(),
+    };
+    const withExpense = { ...base, expenses: [expense] };
+    const next = crmReducer(withExpense, { type: "REMOVE_EXPENSE", expenseId: expense.id });
+    expect(next.expenses).toHaveLength(0);
+  });
+});
+
 describe("crmReducer — SET_AUTH_SESSION (login real via Supabase Auth)", () => {
   it("adiciona um usuário novo (nunca visto) e seta a sessão a partir dele", () => {
     const base = baseState();
@@ -733,75 +766,45 @@ describe("buildSeed", () => {
   });
 });
 
-describe("isValidPersistedState — migração de localStorage legado", () => {
-  it("rejeita um estado legado (anterior à Task 1) que tem tenants mas não tem as coleções de fornecedores", () => {
-    // Formato de um blob salvo por uma sessão de browser ANTES da Task 1
-    // introduzir suppliers/supplierProducts/supplierPriceChanges: `tenants`
-    // existe e é array (passaria numa checagem fraca de "Array.isArray(tenants)"),
-    // mas as 3 coleções novas não existem em lugar nenhum do objeto.
-    const legacyState = {
-      tenants: [{ id: "tenant_1", name: "Loja Legada" }],
-      users: [],
-      contacts: [],
-      deals: [],
-      conversations: [],
-      messages: [],
-      appointments: [],
-      activities: [],
-      connections: [],
-      session: null,
-      // sem suppliers / supplierProducts / supplierPriceChanges
-    };
+describe("crmReducer — SET_REMOTE_DATA e isRealSession", () => {
+  it("SET_REMOTE_DATA substitui contacts/deals/appointments preservando o resto do state", () => {
+    const base = baseState();
+    const newContact: Contact = { ...base.contacts[0], id: "contact_remote", name: "Cliente Remoto" };
+    const newDeal: Deal = { ...base.deals[0], id: "deal_remote", contactId: newContact.id };
 
-    expect(isValidPersistedState(legacyState)).toBe(false);
+    const next = crmReducer(base, {
+      type: "SET_REMOTE_DATA",
+      contacts: [newContact],
+      deals: [newDeal],
+      appointments: [],
+    });
+
+    expect(next.contacts).toEqual([newContact]);
+    expect(next.deals).toEqual([newDeal]);
+    expect(next.appointments).toEqual([]);
+    expect(next.tenants).toBe(base.tenants);
+    expect(next.session).toBe(base.session);
   });
 
-  it("aceita um estado que tem todas as coleções novas como arrays (mesmo vazios)", () => {
-    const upToDateState = {
-      tenants: [],
-      users: [],
-      contacts: [],
-      deals: [],
-      conversations: [],
-      messages: [],
-      appointments: [],
-      activities: [],
-      connections: [],
-      session: null,
-      suppliers: [],
-      supplierProducts: [],
-      supplierPriceChanges: [],
-      attachments: [],
+  it("SET_AUTH_SESSION marca isRealSession true; LOGIN/SWITCH_SESSION/LOGOUT voltam para false", () => {
+    const base = baseState();
+    const user: User = {
+      id: "user_real",
+      tenantId: base.tenants[0].id,
+      name: "Usuário Real",
+      email: "real@teste.com.br",
+      role: "gestor",
+      avatarColor: "#000000",
+      createdAt: new Date().toISOString(),
     };
 
-    expect(isValidPersistedState(upToDateState)).toBe(true);
-  });
+    const withRealSession = crmReducer(base, { type: "SET_AUTH_SESSION", user });
+    expect(withRealSession.isRealSession).toBe(true);
 
-  it("rejeita um estado pós-fornecedores (Leva 1.1) que ainda não tem attachments (Leva 1.2)", () => {
-    const preAttachmentsState = {
-      tenants: [],
-      users: [],
-      contacts: [],
-      deals: [],
-      conversations: [],
-      messages: [],
-      appointments: [],
-      activities: [],
-      connections: [],
-      suppliers: [],
-      supplierProducts: [],
-      supplierPriceChanges: [],
-      session: null,
-      // sem attachments
-    };
+    const afterLogout = crmReducer(withRealSession, { type: "LOGOUT" });
+    expect(afterLogout.isRealSession).toBe(false);
 
-    expect(isValidPersistedState(preAttachmentsState)).toBe(false);
-  });
-
-  it("rejeita valores não-objeto (null, undefined, string, array solto)", () => {
-    expect(isValidPersistedState(null)).toBe(false);
-    expect(isValidPersistedState(undefined)).toBe(false);
-    expect(isValidPersistedState("not an object")).toBe(false);
-    expect(isValidPersistedState([])).toBe(false);
+    const afterSwitch = crmReducer(withRealSession, { type: "SWITCH_SESSION", userId: base.users[0].id });
+    expect(afterSwitch.isRealSession).toBe(false);
   });
 });

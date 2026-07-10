@@ -12,6 +12,7 @@ import { KanbanColumn } from "@/components/pipeline/KanbanColumn";
 import { LostDealsSheet } from "@/components/pipeline/LostDealsSheet";
 import { MarkLostDialog } from "@/components/pipeline/MarkLostDialog";
 import { Button } from "@/components/ui/button";
+import { ApiError, api } from "@/lib/apiClient";
 import { STAGES } from "@/lib/constants";
 import { contactById, conversationWithContact, currentUser, dealsByStage, lostDeals, tenantScope } from "@/lib/selectors";
 import { crmReducer, newId, useCrm } from "@/lib/store";
@@ -25,7 +26,7 @@ function isRecentWin(deal: Deal): boolean {
 }
 
 export function PipelinePage() {
-  const { state, dispatch } = useCrm();
+  const { state, dispatch, refreshCrmData } = useCrm();
   const navigate = useNavigate();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -44,7 +45,7 @@ export function PipelinePage() {
     return stage === "pos_venda" ? posVendaRecent : grouped[stage];
   }
 
-  function handleMoveDeal(dealId: string, stage: Stage) {
+  async function handleMoveDeal(dealId: string, stage: Stage) {
     // Guarda contra mover para a própria coluna (ex.: soltar o card de volta
     // onde estava): sem esse early-return o reducer resetaria stageChangedAt
     // (zerando o relógio de "parado"), criaria uma Activity de mudança de
@@ -52,6 +53,23 @@ export function PipelinePage() {
     // com Activity de venda duplicada.
     const deal = state.deals.find((d) => d.id === dealId);
     if (!deal || deal.stage === stage) return;
+
+    if (state.isRealSession) {
+      try {
+        await api.moveDeal(dealId, stage);
+        const fresh = await refreshCrmData();
+        if (stage === "pos_venda") {
+          const contact = fresh.contacts.find((c) => c.id === deal.contactId);
+          if (contact) {
+            const label = contact.journeyStatus === "recorrente" ? "recorrente" : "cliente";
+            toast.success(`Venda ganha! 🎉 ${contact.name} agora é ${label}.`);
+          }
+        }
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : "Erro ao mover negócio.");
+      }
+      return;
+    }
 
     if (stage === "pos_venda") {
       // Computa o estado resultante antes de despachar para poder ler o
@@ -71,8 +89,21 @@ export function PipelinePage() {
     dispatch({ type: "MOVE_DEAL", dealId, stage });
   }
 
-  function handleConfirmLost(reason: LossReason) {
+  async function handleConfirmLost(reason: LossReason) {
     if (!lostDialogDeal) return;
+
+    if (state.isRealSession) {
+      try {
+        await api.markDealLost(lostDialogDeal.id, reason);
+        await refreshCrmData();
+        toast.success("Negócio marcado como perdido.");
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : "Erro ao marcar negócio como perdido.");
+      }
+      setLostDialogDeal(null);
+      return;
+    }
+
     dispatch({ type: "MARK_DEAL_LOST", dealId: lostDialogDeal.id, reason });
     toast.success("Negócio marcado como perdido.");
     setLostDialogDeal(null);
@@ -103,13 +134,64 @@ export function PipelinePage() {
     navigate(`/inbox/${conversation.id}`);
   }
 
-  function handleCreateLead(values: AddLeadFormValues) {
+  async function handleCreateLead(values: AddLeadFormValues) {
     if (!state.session) return;
     const tenantId = state.session.tenantId;
     const now = new Date().toISOString();
+    const productLabel = values.supplierProductName ?? "Novo negócio";
+
+    if (state.isRealSession) {
+      try {
+        const contact = await api.createContact({
+          name: values.name,
+          whatsapp: values.whatsapp,
+          origin: values.origin,
+          interests: [],
+          tags: [],
+          owner_id: values.ownerId,
+        });
+        const deal = await api.createDeal({
+          contact_id: contact.id,
+          title: productLabel,
+          products: productLabel,
+          value: values.value,
+          payment: "pix",
+          trade_in: false,
+          owner_id: values.ownerId,
+        });
+        if (values.supplierProductId) {
+          try {
+            await api.updateDealFinancials(deal.id, {
+              supplier_product_id: values.supplierProductId,
+              supplier_value: values.supplierValue ?? 0,
+              gift_value: 0,
+              freight_value: 0,
+            });
+          } catch (financialsError) {
+            toast.error(
+              financialsError instanceof ApiError
+                ? `Lead criado, mas o custo do fornecedor não foi salvo: ${financialsError.message}`
+                : "Lead criado, mas o custo do fornecedor não foi salvo.",
+            );
+          }
+        }
+        await api.createActivity({
+          contact_id: contact.id,
+          deal_id: deal.id,
+          type: "mudanca_estagio",
+          description: `Novo lead criado: ${productLabel}.`,
+        });
+        await refreshCrmData();
+        toast.success(`Lead ${contact.name} criado.`);
+        setAddOpen(false);
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : "Erro ao criar lead.");
+      }
+      return;
+    }
+
     const contactId = newId("contact");
     const dealId = newId("deal");
-    const productLabel = values.supplierProductName ?? "Novo negócio";
 
     const contact: Contact = {
       id: contactId,

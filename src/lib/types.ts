@@ -172,6 +172,15 @@ export interface Attachment {
   uploadedAt: string;
 }
 
+export interface Expense {
+  id: string;
+  tenantId: string;
+  description: string;
+  value: number;
+  userId: string;
+  createdAt: string;
+}
+
 export interface Session {
   userId: string;
   tenantId: string;
@@ -192,5 +201,11 @@ export interface CrmState {
   supplierProducts: SupplierProduct[];
   supplierPriceChanges: SupplierPriceChange[];
   attachments: Attachment[];
+  expenses: Expense[];
   session: Session | null;
+  /** true quando a sessão veio de um login real (Supabase Auth) — nesse caso
+   * contacts/deals/activities/appointments vêm do backend real, não do
+   * reducer local, e o AppShell/telas de mutação chamam a API em vez de
+   * despachar ações locais. Falso no modo demo (LOGIN/SWITCH_SESSION). */
+  isRealSession: boolean;
 }

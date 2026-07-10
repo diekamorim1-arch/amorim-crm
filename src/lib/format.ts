@@ -52,3 +52,14 @@ export function daysAgo(n: number, hour?: number): string {
 export function hoursAgo(n: number): string {
   return new Date(Date.now() - n * HOUR_MS).toISOString();
 }
+
+const MONTH_NAMES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+/** Formata uma data como "Julho/2026" — usado no histórico mensal do
+ * Dashboard e nos fechamentos mensais de Gastos. */
+export function monthLabel(date: Date): string {
+  return `${MONTH_NAMES[date.getMonth()]}/${date.getFullYear()}`;
+}

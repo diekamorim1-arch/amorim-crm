@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ApiError, api } from "@/lib/apiClient";
 import { ORIGIN_LABELS, STAGES, STAGE_LABELS } from "@/lib/constants";
 import { brl } from "@/lib/format";
 import { contactById, tenantScope } from "@/lib/selectors";
@@ -39,7 +40,7 @@ function initialsOf(name: string): string {
 }
 
 export function ContactPanel({ contactId }: ContactPanelProps) {
-  const { state, dispatch } = useCrm();
+  const { state, dispatch, refreshCrmData } = useCrm();
   const navigate = useNavigate();
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
   const [apptDialogOpen, setApptDialogOpen] = useState(false);
@@ -59,8 +60,20 @@ export function ContactPanel({ contactId }: ContactPanelProps) {
     .filter((d) => d.contactId === contact.id && d.outcome === "aberto")
     .sort((a, b) => new Date(b.stageChangedAt).getTime() - new Date(a.stageChangedAt).getTime())[0];
 
-  function handleMoveStage(stage: Stage) {
+  async function handleMoveStage(stage: Stage) {
     if (!activeDeal || stage === activeDeal.stage) return;
+
+    if (state.isRealSession) {
+      try {
+        await api.moveDeal(activeDeal.id, stage);
+        await refreshCrmData();
+        toast.success(`Negócio movido para ${STAGE_LABELS[stage]}.`);
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : "Erro ao mover negócio.");
+      }
+      return;
+    }
+
     dispatch({ type: "MOVE_DEAL", dealId: activeDeal.id, stage });
     toast.success(`Negócio movido para ${STAGE_LABELS[stage]}.`);
   }

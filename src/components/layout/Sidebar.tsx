@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   MoreHorizontal,
+  Receipt,
   Settings,
   Store,
   Truck,
@@ -45,6 +46,7 @@ const ATENDENTE_ITEMS: NavItem[] = [
 const GESTOR_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   ...ATENDENTE_ITEMS,
+  { to: "/gastos", label: "Gastos", icon: Receipt },
   { to: "/config", label: "Configurações", icon: Settings },
 ];
 

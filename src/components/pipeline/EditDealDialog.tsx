@@ -8,6 +8,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
+import { ApiError, api } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,7 +40,7 @@ interface EditDealDialogProps {
 }
 
 export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps) {
-  const { state, dispatch } = useCrm();
+  const { state, dispatch, refreshCrmData } = useCrm();
   const { suppliers, supplierProducts } = tenantScope(state);
 
   const [value, setValue] = useState("");
@@ -91,9 +92,27 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
   const parsedFreightValue = Number(freightValue) || 0;
   const netGain = parsedValue - parsedSupplierValue - parsedGiftValue - parsedFreightValue;
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!deal) return;
+
+    if (state.isRealSession) {
+      try {
+        await api.updateDeal(deal.id, { value: parsedValue });
+        await api.updateDealFinancials(deal.id, {
+          supplier_product_id: supplierProductId || undefined,
+          supplier_value: parsedSupplierValue,
+          gift_value: parsedGiftValue,
+          freight_value: parsedFreightValue,
+        });
+        await refreshCrmData();
+        toast.success(`Negócio ${deal.title} atualizado.`);
+        handleOpenChange(false);
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar negócio.");
+      }
+      return;
+    }
 
     dispatch({
       type: "UPDATE_DEAL_FINANCIALS",

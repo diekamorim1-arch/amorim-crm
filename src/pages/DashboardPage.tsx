@@ -4,21 +4,34 @@
 // (dashboardMetrics/tenantScope) e passa dados prontos para componentes de
 // gráfico "burros" (sem useCrm próprio), para ficarem fáceis de testar depois.
 
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import { CalendarX } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { ChannelTable } from "@/components/dashboard/ChannelTable";
+import { ClientProfitTable } from "@/components/dashboard/ClientProfitTable";
+import { CustomersWonSheet } from "@/components/dashboard/CustomersWonSheet";
 import { FunnelChart } from "@/components/dashboard/FunnelChart";
 import { LossRanking } from "@/components/dashboard/LossRanking";
 import { MetricCard } from "@/components/dashboard/MetricCard";
+import { MonthlyHistoryTable } from "@/components/dashboard/MonthlyHistoryTable";
+import { NewLeadsSheet } from "@/components/dashboard/NewLeadsSheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatHourMinute, isSameDay } from "@/components/agenda/weekGridMath";
 import { APPOINTMENT_TYPE_LABELS, STAGE_LABELS } from "@/lib/constants";
 import { brl } from "@/lib/format";
-import { dashboardMetrics, tenantScope } from "@/lib/selectors";
+import {
+  customersWonThisMonth,
+  dashboardMetrics,
+  monthKeyOf,
+  monthlyHistory,
+  newLeadsThisMonth,
+  tenantScope,
+  wonDealsForMonth,
+} from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
 
 /** Delta percentual assinado vs. o período anterior; sem base (mês anterior
@@ -33,6 +46,10 @@ export function DashboardPage() {
   const { state } = useCrm();
   const navigate = useNavigate();
 
+  const [newLeadsOpen, setNewLeadsOpen] = useState(false);
+  const [customersWonOpen, setCustomersWonOpen] = useState(false);
+  const [profitMonth, setProfitMonth] = useState(() => monthKeyOf(new Date().toISOString()));
+
   const metrics = dashboardMetrics(state);
   const { conversations, appointments, contacts } = tenantScope(state);
 
@@ -44,6 +61,12 @@ export function DashboardPage() {
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 
   const revenueDelta = computeDelta(metrics.revenueMonth, metrics.revenuePrevMonth);
+
+  const newLeads = newLeadsThisMonth(state);
+  const customersWon = customersWonThisMonth(state);
+  const history = monthlyHistory(state);
+  const monthOptions = [...history].reverse().map((row) => ({ monthKey: row.monthKey, month: row.month }));
+  const profitRows = wonDealsForMonth(state, profitMonth);
 
   return (
     <div className="flex flex-col gap-4">
@@ -57,6 +80,13 @@ export function DashboardPage() {
           label="Leads novos no mês"
           value={String(metrics.newLeadsMonth)}
           valueClassName="font-display"
+          onClick={() => setNewLeadsOpen(true)}
+        />
+        <MetricCard
+          label="Clientes que compraram no mês"
+          value={String(customersWon.length)}
+          valueClassName="font-display"
+          onClick={() => setCustomersWonOpen(true)}
         />
         <MetricCard
           label="Em negociação"
@@ -157,6 +187,32 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display text-base font-semibold">Histórico mensal</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MonthlyHistoryTable data={history} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display text-base font-semibold">Lucro líquido por cliente</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ClientProfitTable
+            rows={profitRows}
+            monthOptions={monthOptions}
+            selectedMonth={profitMonth}
+            onMonthChange={setProfitMonth}
+          />
+        </CardContent>
+      </Card>
+
+      <NewLeadsSheet open={newLeadsOpen} onOpenChange={setNewLeadsOpen} contacts={newLeads} />
+      <CustomersWonSheet open={customersWonOpen} onOpenChange={setCustomersWonOpen} rows={customersWon} />
     </div>
   );
 }

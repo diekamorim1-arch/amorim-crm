@@ -1,5 +1,7 @@
-// InviteUserDialog — simula o convite de um novo membro da equipe: cria o
-// User diretamente via ADD_USER (não há fluxo de e-mail/aceite real).
+// InviteUserDialog — convida um membro real da equipe (Edge Function
+// create-team-member, que chama auth.admin.inviteUserByEmail e grava
+// user_profiles) quando a sessão é real; no modo demo (login rápido, sem JWT
+// real) continua simulando via ADD_USER local, como antes.
 
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -23,7 +25,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AVATAR_COLORS, ROLE_LABELS } from "@/lib/constants";
-import { newId, type CrmAction, type Dispatch } from "@/lib/store";
+import { newId, useCrm, type CrmAction, type Dispatch } from "@/lib/store";
+import { supabase } from "@/lib/supabaseClient";
 import type { Role, User } from "@/lib/types";
 
 interface InviteUserDialogProps {
@@ -38,10 +41,12 @@ const INVITE_ROLES: Role[] = ["atendente", "gestor"];
 const EMPTY_ERRORS = { name: "", email: "" };
 
 export function InviteUserDialog({ open, onOpenChange, tenantId, dispatch }: InviteUserDialogProps) {
+  const { state } = useCrm();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("atendente");
   const [errors, setErrors] = useState(EMPTY_ERRORS);
+  const [submitting, setSubmitting] = useState(false);
 
   function reset() {
     setName("");
@@ -55,7 +60,7 @@ export function InviteUserDialog({ open, onOpenChange, tenantId, dispatch }: Inv
     onOpenChange(next);
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
 
     const nextErrors = {
@@ -64,6 +69,25 @@ export function InviteUserDialog({ open, onOpenChange, tenantId, dispatch }: Inv
     };
     setErrors(nextErrors);
     if (nextErrors.name || nextErrors.email) return;
+
+    if (state.isRealSession) {
+      setSubmitting(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("create-team-member", {
+          body: { name: name.trim(), email: email.trim(), role },
+        });
+        if (error || data?.error) {
+          toast.error(data?.error ?? error?.message ?? "Erro ao convidar membro da equipe.");
+          return;
+        }
+        toast.success(`Convite enviado para ${email.trim()}.`);
+        reset();
+        onOpenChange(false);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
 
     const user: User = {
       id: newId("user"),
@@ -85,7 +109,11 @@ export function InviteUserDialog({ open, onOpenChange, tenantId, dispatch }: Inv
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Convidar membro da equipe</DialogTitle>
-          <DialogDescription>Cria um acesso simulado — nenhum e-mail é enviado de verdade.</DialogDescription>
+          <DialogDescription>
+            {state.isRealSession
+              ? "A pessoa recebe um e-mail de convite real e define a própria senha no primeiro acesso."
+              : "Modo demo: cria um acesso simulado — nenhum e-mail é enviado de verdade."}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -134,7 +162,9 @@ export function InviteUserDialog({ open, onOpenChange, tenantId, dispatch }: Inv
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit">Convidar</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Convidando…" : "Convidar"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -13,6 +13,7 @@ import { APPOINTMENT_TYPE_STYLES } from "@/components/agenda/appointmentTypeStyl
 import { formatHourMinute } from "@/components/agenda/weekGridMath";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ApiError, api } from "@/lib/apiClient";
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_TYPE_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useCrm } from "@/lib/store";
@@ -27,14 +28,26 @@ interface TodayListProps {
 }
 
 export function TodayList({ appointments, contacts, deals, users, onSelectAppointment }: TodayListProps) {
-  const { dispatch } = useCrm();
+  const { state, dispatch, refreshCrmData } = useCrm();
 
   const sorted = [...appointments].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
   );
 
-  function updateStatus(appt: Appointment, status: "concluido" | "cancelado", event: MouseEvent) {
+  async function updateStatus(appt: Appointment, status: "concluido" | "cancelado", event: MouseEvent) {
     event.stopPropagation();
+
+    if (state.isRealSession) {
+      try {
+        await api.updateAppointment(appt.id, { status });
+        await refreshCrmData();
+        toast.success(status === "concluido" ? "Agendamento concluído." : "Agendamento cancelado.");
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar agendamento.");
+      }
+      return;
+    }
+
     dispatch({ type: "UPDATE_APPOINTMENT", appointment: { ...appt, status } });
     toast.success(status === "concluido" ? "Agendamento concluído." : "Agendamento cancelado.");
   }

@@ -7,6 +7,7 @@
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
+import { ApiError, api } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,7 +38,7 @@ interface QuickDealDialogProps {
 }
 
 export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDialogProps) {
-  const { state, dispatch } = useCrm();
+  const { state, dispatch, refreshCrmData } = useCrm();
   const contact = contactById(state, contactId);
   const { suppliers, supplierProducts } = tenantScope(state);
 
@@ -69,7 +70,7 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
     setSupplierProductId("");
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!state.session || !contact) return;
 
@@ -81,6 +82,52 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
     const product = supplierProducts.find((p) => p.id === supplierProductId);
     const productLabel = product?.name ?? "Novo negócio";
     const now = new Date().toISOString();
+
+    if (state.isRealSession) {
+      try {
+        const createdDeal = await api.createDeal({
+          contact_id: contact.id,
+          title: productLabel,
+          products: productLabel,
+          value: Number(value),
+          payment,
+          trade_in: false,
+          owner_id: contact.ownerId,
+        });
+        if (stage !== "novo_lead") {
+          await api.moveDeal(createdDeal.id, stage);
+        }
+        if (product) {
+          try {
+            await api.updateDealFinancials(createdDeal.id, {
+              supplier_product_id: product.id,
+              supplier_value: product.currentPrice,
+              gift_value: 0,
+              freight_value: 0,
+            });
+          } catch (financialsError) {
+            toast.error(
+              financialsError instanceof ApiError
+                ? `Negócio criado, mas o custo do fornecedor não foi salvo: ${financialsError.message}`
+                : "Negócio criado, mas o custo do fornecedor não foi salvo.",
+            );
+          }
+        }
+        await api.createActivity({
+          contact_id: contact.id,
+          deal_id: createdDeal.id,
+          type: "mudanca_estagio",
+          description: `Negócio criado pelo Inbox: ${productLabel}.`,
+        });
+        await refreshCrmData();
+        toast.success(`Negócio criado para ${contact.name}.`);
+        reset();
+        onOpenChange(false);
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : "Erro ao criar negócio.");
+      }
+      return;
+    }
 
     const deal: Deal = {
       id: newId("deal"),

@@ -8,6 +8,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
+import { ApiError, api } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -75,7 +76,7 @@ function valuesFromContact(contact: Contact | undefined, defaultOwnerId: string)
 }
 
 export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDialogProps) {
-  const { state, dispatch } = useCrm();
+  const { state, dispatch, refreshCrmData } = useCrm();
   const users = tenantScope(state).users;
   const defaultOwnerId = contact?.ownerId ?? state.session?.userId ?? "";
 
@@ -109,7 +110,7 @@ export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDi
     onOpenChange(next);
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!state.session) return;
 
@@ -126,6 +127,49 @@ export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDi
       .map((t) => t.trim())
       .filter(Boolean);
     const hasAddress = values.street.trim() || values.city.trim() || values.state.trim() || values.zip.trim();
+    const address = hasAddress
+      ? { street: values.street.trim(), city: values.city.trim(), state: values.state.trim(), zip: values.zip.trim() }
+      : undefined;
+
+    if (state.isRealSession) {
+      try {
+        if (isEdit && contact) {
+          await api.updateContact(contact.id, {
+            name: values.name.trim(),
+            whatsapp: values.whatsapp.trim(),
+            instagram: values.instagram.trim() || undefined,
+            email: values.email.trim() || undefined,
+            cpf: values.cpf.trim() || undefined,
+            origin: values.origin,
+            interests: values.interests,
+            tags,
+            owner_id: values.ownerId || contact.ownerId,
+            address,
+          });
+          await refreshCrmData();
+          toast.success(`Alterações de ${values.name.trim()} salvas.`);
+        } else {
+          const created = await api.createContact({
+            name: values.name.trim(),
+            whatsapp: values.whatsapp.trim(),
+            instagram: values.instagram.trim() || undefined,
+            email: values.email.trim() || undefined,
+            cpf: values.cpf.trim() || undefined,
+            origin: values.origin,
+            interests: values.interests,
+            tags,
+            owner_id: values.ownerId || state.session.userId,
+            address,
+          });
+          await refreshCrmData();
+          toast.success(`Cliente ${created.name} criado.`);
+        }
+        handleOpenChange(false);
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : "Erro ao salvar cliente.");
+      }
+      return;
+    }
 
     if (isEdit && contact) {
       const updated: Contact = {

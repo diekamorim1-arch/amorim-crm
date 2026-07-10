@@ -4,10 +4,12 @@
 // Fonte do valor grande: display (Bricolage) para números "de contagem"
 // (leads, taxa); mono tabular-nums para valores em R$, seguindo a convenção
 // tipográfica do produto (dinheiro sempre em mono, ver docs/design-direction.md).
+// Quando `onClick` é passado, o card vira um botão (drill-down) — usado pelos
+// cards "Leads novos no mês" e "Clientes que compraram no mês" no Dashboard.
 
 import { ArrowDown, ArrowUp } from "lucide-react";
 
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { CardHeader, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 interface MetricCardDelta {
@@ -23,15 +25,19 @@ interface MetricCardProps {
   /** Classe de fonte/tamanho do valor grande — o card decide, não o pai. */
   valueClassName?: string;
   delta?: MetricCardDelta;
+  /** Quando presente, o card vira um botão (drill-down) — hover/focus visíveis. */
+  onClick?: () => void;
 }
 
-export function MetricCard({ label, value, valueClassName, delta }: MetricCardProps) {
+const CARD_CLASSES = "flex flex-col gap-3 rounded-xl border bg-card py-5 text-card-foreground shadow-sm w-full";
+
+export function MetricCard({ label, value, valueClassName, delta, onClick }: MetricCardProps) {
   const hasDelta = delta !== undefined;
   const isUp = hasDelta && delta.pct > 0;
   const isDown = hasDelta && delta.pct < 0;
 
-  return (
-    <Card className="gap-3 py-5">
+  const body = (
+    <>
       <CardHeader className="px-5">
         <p className="text-sm text-muted-foreground">{label}</p>
       </CardHeader>
@@ -49,6 +55,16 @@ export function MetricCard({ label, value, valueClassName, delta }: MetricCardPr
           </div>
         )}
       </CardContent>
-    </Card>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cn(CARD_CLASSES, "cursor-pointer text-left transition-colors hover:bg-accent/50")}>
+        {body}
+      </button>
+    );
+  }
+
+  return <div className={CARD_CLASSES}>{body}</div>;
 }
