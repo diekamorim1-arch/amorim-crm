@@ -36,3 +36,11 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          # Nenhum destes e segredo (URL do projeto Supabase, anon key
+          # publica por design, URL publica da API) — por isso vao direto no
+          # workflow em vez de precisar de Repository Secrets configurados a
+          # mao. Ver revisao de seguranca pre-VPS (secao 1).
+          build-args: |
+            VITE_SUPABASE_URL=https://bkyztodycgvhagzcubes.supabase.co
+            VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJreXp0b2R5Y2d2aGFnemN1YmVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NDIwODQsImV4cCI6MjA5OTAxODA4NH0.i9b4FrNMjQqydOQfn-nciL3uBhStP6igygpYbjX5P0A
+            VITE_API_BASE_URL=https://api.amorimcrm.online
