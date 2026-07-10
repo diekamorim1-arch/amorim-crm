@@ -5,6 +5,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type Dispatch,
   type JSX,
   type ReactNode,
@@ -12,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { buildSeed } from "./seed";
 import { newId } from "./id";
+import { supabase } from "./supabaseClient";
 import type {
   Activity,
   Appointment,
@@ -74,6 +76,7 @@ export type CrmAction =
   | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; value: number; supplierProductId?: string; supplierValue: number; giftValue: number; freightValue: number }
   | { type: "ADD_ATTACHMENT"; attachment: Attachment }
   | { type: "REMOVE_ATTACHMENT"; attachmentId: string }
+  | { type: "SET_AUTH_SESSION"; user: User }
   | { type: "RESET_DEMO" };
 
 function countWonDeals(state: CrmState, contactId: string): number {
@@ -386,6 +389,22 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       return { ...state, attachments: state.attachments.filter((a) => a.id !== action.attachmentId) };
     }
 
+    case "SET_AUTH_SESSION": {
+      // Login real (Supabase Auth): injeta/atualiza o User derivado do
+      // profile no array local para que currentUser()/tenantScope() — que
+      // continuam olhando só para state.users/state.session — funcionem sem
+      // precisar mudar todo o resto do app nesta mesma leva.
+      const exists = state.users.some((u) => u.id === action.user.id);
+      const users = exists
+        ? state.users.map((u) => (u.id === action.user.id ? action.user : u))
+        : [...state.users, action.user];
+      return {
+        ...state,
+        users,
+        session: { userId: action.user.id, tenantId: action.user.tenantId ?? "", role: action.user.role },
+      };
+    }
+
     case "RESET_DEMO": {
       const fresh = buildSeed();
       if (!state.session) return fresh;
@@ -456,6 +475,59 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
   // o problema persiste: só avisa uma vez por "sequência" de falhas, e reseta
   // assim que um setItem volta a funcionar.
   const hasWarnedQuotaRef = useRef(false);
+  // Só true depois da 1ª checagem de sessão do Supabase (getSession inicial).
+  // Sem isso, o guard de AppShell veria state.session como estava persistido
+  // (ok pro modo demo) mas um usuário real autenticado sofreria um flash de
+  // redirect pro /login enquanto a sessão real ainda está sendo resolvida.
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function applyRealSession(session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]) {
+      // Sem sessão real do Supabase: não mexe no state.session existente —
+      // pode ser um login de demonstração (LOGIN/SWITCH_SESSION, dev-only)
+      // que não tem por que ser derrubado só porque nunca houve auth real.
+      if (!session) return;
+
+      const { data: profileRow } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("id", session.user.id)
+        .single();
+      if (!active || !profileRow) return;
+
+      const user: User = {
+        id: session.user.id,
+        email: session.user.email ?? "",
+        tenantId: profileRow.tenant_id,
+        role: profileRow.role,
+        name: profileRow.name,
+        avatarColor: profileRow.avatar_color,
+        createdAt: profileRow.created_at,
+      };
+      dispatch({ type: "SET_AUTH_SESSION", user });
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      applyRealSession(data.session).finally(() => {
+        if (active) setAuthReady(true);
+      });
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        dispatch({ type: "LOGOUT" });
+        return;
+      }
+      applyRealSession(session);
+    });
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -478,6 +550,12 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
   }, [state]);
 
   const value = useMemo(() => ({ state, dispatch }), [state]);
+
+  if (!authReady) {
+    return (
+      <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">Carregando…</div>
+    );
+  }
 
   return <CrmContext.Provider value={value}>{children}</CrmContext.Provider>;
 }

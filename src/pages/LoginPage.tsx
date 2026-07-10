@@ -1,5 +1,10 @@
-import { type FormEvent } from "react";
+// LoginPage — autenticação real via Supabase Auth (signInWithPassword) +
+// recuperação de senha (resetPasswordForEmail). Os botões de "acesso rápido"
+// (login de demonstração sem senha) só existem em build de desenvolvimento.
+
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 
 import amorimMarkBlack from "@/assets/amorim-mark-black.png";
 import amorimMarkWhite from "@/assets/amorim-mark-white.png";
@@ -7,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { supabase } from "@/lib/supabaseClient";
 import { useCrm } from "@/lib/store";
 import { useTheme } from "@/lib/theme";
 import type { Role, User } from "@/lib/types";
@@ -20,6 +26,11 @@ export function LoginPage() {
   const { state, dispatch } = useCrm();
   const { theme } = useTheme();
   const navigate = useNavigate();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const atendente = state.users.find((u) => u.role === "atendente" && u.name === "Juliana Costa");
   const gestor = state.users.find((u) => u.role === "gestor" && u.name === "Rafael Amorim");
@@ -37,8 +48,41 @@ export function LoginPage() {
     navigate(role === "atendente" ? "/pipeline" : role === "admin_saas" ? "/admin" : "/", { replace: true });
   }
 
-  function handleDecorativeSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setError("");
+
+    if (!email.trim() || !password) {
+      setError("Informe e-mail e senha.");
+      return;
+    }
+
+    setLoading(true);
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    setLoading(false);
+
+    if (signInError) {
+      setError("E-mail ou senha incorretos.");
+      return;
+    }
+
+    navigate("/", { replace: true });
+  }
+
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      setError("Informe seu e-mail acima antes de clicar em \"Esqueci minha senha\".");
+      return;
+    }
+    setError("");
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/redefinir-senha`,
+    });
+    if (resetError) {
+      toast.error("Não foi possível enviar o e-mail de redefinição. Tente novamente.");
+      return;
+    }
+    toast.success("Se esse e-mail estiver cadastrado, você vai receber um link para redefinir a senha.");
   }
 
   return (
@@ -61,45 +105,70 @@ export function LoginPage() {
             <CardDescription>Acesse com seu e-mail e senha.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form className="flex flex-col gap-4" onSubmit={handleDecorativeSubmit}>
+            <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">E-mail</Label>
-                <Input id="email" type="email" placeholder="voce@sualoja.com.br" autoComplete="email" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="voce@sualoja.com.br"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="password">Senha</Label>
-                <Input id="password" type="password" placeholder="••••••••" autoComplete="current-password" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  aria-invalid={!!error}
+                />
               </div>
-              <Button type="submit" className="mt-2">
-                Entrar
+              {error && <p className="text-xs text-destructive">{error}</p>}
+              <Button type="submit" className="mt-2" disabled={loading}>
+                {loading ? "Entrando…" : "Entrar"}
               </Button>
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                className="text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
+              >
+                Esqueci minha senha
+              </button>
             </form>
           </CardContent>
         </Card>
 
-        <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium text-muted-foreground">
-            Ou entre como um dos usuários de demonstração
-          </p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {quickAccessUsers.map(({ user, roleLabel }) =>
-              user ? (
-                <button
-                  key={user.id}
-                  type="button"
-                  onClick={() => handleQuickLogin(user.role, user.id)}
-                  className="flex flex-col items-start gap-1 rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <span className="text-xs font-medium text-muted-foreground">{roleLabel}</span>
-                  <span className="font-display text-base font-semibold text-foreground">{user.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {tenantNameFor(state, user) ?? "Sem loja ativa"}
-                  </span>
-                </button>
-              ) : null,
-            )}
+        {import.meta.env.DEV && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm font-medium text-muted-foreground">
+              Ou entre como um dos usuários de demonstração (dev)
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {quickAccessUsers.map(({ user, roleLabel }) =>
+                user ? (
+                  <button
+                    key={user.id}
+                    type="button"
+                    onClick={() => handleQuickLogin(user.role, user.id)}
+                    className="flex flex-col items-start gap-1 rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <span className="text-xs font-medium text-muted-foreground">{roleLabel}</span>
+                    <span className="font-display text-base font-semibold text-foreground">{user.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {tenantNameFor(state, user) ?? "Sem loja ativa"}
+                    </span>
+                  </button>
+                ) : null,
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

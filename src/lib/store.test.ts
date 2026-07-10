@@ -414,6 +414,57 @@ describe("crmReducer — anexos", () => {
   });
 });
 
+describe("crmReducer — SET_AUTH_SESSION (login real via Supabase Auth)", () => {
+  it("adiciona um usuário novo (nunca visto) e seta a sessão a partir dele", () => {
+    const base = baseState();
+    const user: User = {
+      id: "auth-user-1",
+      tenantId: base.tenants[0].id,
+      name: "Dieka Morim",
+      email: "diekamorim1@gmail.com",
+      role: "gestor",
+      avatarColor: "#4f46e5",
+      createdAt: new Date().toISOString(),
+    };
+
+    const next = crmReducer(base, { type: "SET_AUTH_SESSION", user });
+
+    expect(next.users).toContainEqual(user);
+    expect(next.session).toEqual({ userId: user.id, tenantId: user.tenantId, role: user.role });
+  });
+
+  it("atualiza (não duplica) um usuário já presente em state.users", () => {
+    const base = baseState();
+    const updatedOwner: User = { ...base.users[0], name: "Nome Atualizado" };
+
+    const next = crmReducer(base, { type: "SET_AUTH_SESSION", user: updatedOwner });
+
+    expect(next.users).toHaveLength(base.users.length);
+    expect(next.users.find((u) => u.id === updatedOwner.id)?.name).toBe("Nome Atualizado");
+    expect(next.session).toEqual({
+      userId: updatedOwner.id,
+      tenantId: updatedOwner.tenantId,
+      role: updatedOwner.role,
+    });
+  });
+
+  it("admin_saas (tenantId null) vira session.tenantId string vazia, mesma convenção de LOGIN", () => {
+    const base = baseState();
+    const admin: User = {
+      id: "auth-admin-1",
+      tenantId: null,
+      name: "Admin Real",
+      email: "admin@amorimcrm.com.br",
+      role: "admin_saas",
+      avatarColor: "#0f172a",
+      createdAt: new Date().toISOString(),
+    };
+
+    const next = crmReducer(base, { type: "SET_AUTH_SESSION", user: admin });
+    expect(next.session).toEqual({ userId: admin.id, tenantId: "", role: "admin_saas" });
+  });
+});
+
 describe("priceHistoryForProduct", () => {
   it("retorna as mudanças de preço do produto, mais recente primeiro", () => {
     const base = baseState();

@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Check, ChevronsUpDown, RotateCcw } from "lucide-react";
+import { Check, ChevronsUpDown, LogOut, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { currentUser } from "@/lib/selectors";
+import { supabase } from "@/lib/supabaseClient";
 import { useCrm } from "@/lib/store";
 import { ROLE_LABELS } from "@/lib/constants";
 import type { User } from "@/lib/types";
@@ -68,6 +69,11 @@ export function SessionSwitcher() {
     navigate("/");
   }
 
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    navigate("/login", { replace: true });
+  }
+
   if (!me) return null;
 
   return (
@@ -87,37 +93,46 @@ export function SessionSwitcher() {
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-64">
-          {groups.map((group, index) => (
-            <div key={group.label}>
-              {index > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-              <DropdownMenuGroup>
-                {group.users.map((user) => (
-                  <DropdownMenuItem
-                    key={user.id}
-                    onSelect={() => handleSwitch(user.id)}
-                    className="gap-2"
-                  >
-                    <Avatar size="sm">
-                      <AvatarFallback style={{ backgroundColor: user.avatarColor, color: "#fff" }}>
-                        {initials(user.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="flex flex-1 flex-col leading-tight">
-                      <span>{user.name}</span>
-                      <span className="text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</span>
-                    </span>
-                    {user.id === me.id && <Check className="size-4 text-primary" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            </div>
-          ))}
+          {import.meta.env.DEV && (
+            <>
+              {groups.map((group, index) => (
+                <div key={group.label}>
+                  {index > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    {group.users.map((user) => (
+                      <DropdownMenuItem
+                        key={user.id}
+                        onSelect={() => handleSwitch(user.id)}
+                        className="gap-2"
+                      >
+                        <Avatar size="sm">
+                          <AvatarFallback style={{ backgroundColor: user.avatarColor, color: "#fff" }}>
+                            {initials(user.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="flex flex-1 flex-col leading-tight">
+                          <span>{user.name}</span>
+                          <span className="text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</span>
+                        </span>
+                        {user.id === me.id && <Check className="size-4 text-primary" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </div>
+              ))}
 
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onSelect={() => setResetOpen(true)} className="gap-2">
-            <RotateCcw className="size-4" />
-            Resetar demo
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => setResetOpen(true)} className="gap-2">
+                <RotateCcw className="size-4" />
+                Resetar demo
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          <DropdownMenuItem onSelect={handleSignOut} className="gap-2">
+            <LogOut className="size-4" />
+            Sair
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

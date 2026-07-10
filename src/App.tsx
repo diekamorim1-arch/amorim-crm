@@ -9,6 +9,7 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
+import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { SupplierDetailPage } from "@/pages/SupplierDetailPage";
 import { SuppliersPage } from "@/pages/SuppliersPage";
@@ -22,6 +23,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
 
       <Route element={<AppShell />}>
         <Route path="/" element={<DashboardPage />} />

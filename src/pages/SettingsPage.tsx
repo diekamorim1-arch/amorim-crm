@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 
+import { AccountTab } from "@/components/settings/AccountTab";
 import { FunnelTagsTab } from "@/components/settings/FunnelTagsTab";
 import { StoreTab } from "@/components/settings/StoreTab";
 import { TeamTab } from "@/components/settings/TeamTab";
@@ -35,6 +36,7 @@ export function SettingsPage() {
           <TabsTrigger value="loja">Loja</TabsTrigger>
           <TabsTrigger value="equipe">Equipe</TabsTrigger>
           <TabsTrigger value="funil-tags">Funil e tags</TabsTrigger>
+          <TabsTrigger value="conta">Conta</TabsTrigger>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -57,6 +59,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="funil-tags" className="mt-4">
           <FunnelTagsTab tenant={tenant} dispatch={dispatch} />
+        </TabsContent>
+        <TabsContent value="conta" className="mt-4">
+          <AccountTab />
         </TabsContent>
       </Tabs>
     </div>
