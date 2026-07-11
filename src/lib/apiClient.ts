@@ -475,6 +475,7 @@ export const api = {
   listConnections: () => request<ApiConnection[]>("/api/v1/connections"),
   createConnection: (phone: string) =>
     request<ApiConnection>("/api/v1/connections", { method: "POST", body: JSON.stringify({ phone }) }),
+  deleteConnection: (id: string) => request<void>(`/api/v1/connections/${id}`, { method: "DELETE" }),
   pairConnection: (id: string) => request<ApiConnection>(`/api/v1/connections/${id}/pair`, { method: "POST" }),
   getQrCode: (id: string) => request<ApiQrCode>(`/api/v1/connections/${id}/qrcode`),
   disconnectConnection: (id: string) =>

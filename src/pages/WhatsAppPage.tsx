@@ -42,6 +42,11 @@ export function WhatsAppPage() {
     setConnections((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
   }
 
+  function handleDeleted(id: string) {
+    setConnections((prev) => prev.filter((c) => c.id !== id));
+    toast.success("Conexão excluída. Cadastre um número pra parear de novo.");
+  }
+
   async function handleCreate() {
     if (!phone.trim()) {
       toast.error("Informe o número do WhatsApp.");
@@ -112,6 +117,7 @@ export function WhatsAppPage() {
               ownerName={ownerNameFor(connection)}
               ownerAvatarColor={ownerAvatarColorFor(connection)}
               onChanged={handleChanged}
+              onDeleted={handleDeleted}
             />
           ))}
         </div>

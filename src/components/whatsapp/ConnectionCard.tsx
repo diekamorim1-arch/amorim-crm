@@ -7,10 +7,20 @@ import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 import { PairingDialog } from "./PairingDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { api, type ApiConnection } from "@/lib/apiClient";
+import { api, ApiError, type ApiConnection } from "@/lib/apiClient";
 import { CONNECTION_STATUS_LABELS } from "@/lib/constants";
 import { relativeTime } from "@/lib/format";
 import type { ConnectionStatus } from "@/lib/types";
@@ -37,11 +47,14 @@ interface ConnectionCardProps {
   ownerName: string;
   ownerAvatarColor: string;
   onChanged: (updated: ApiConnection) => void;
+  onDeleted: (id: string) => void;
 }
 
-export function ConnectionCard({ connection, ownerName, ownerAvatarColor, onChanged }: ConnectionCardProps) {
+export function ConnectionCard({ connection, ownerName, ownerAvatarColor, onChanged, onDeleted }: ConnectionCardProps) {
   const [pairingOpen, setPairingOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isConnected = connection.status === "conectado";
 
   async function handleToggle() {
@@ -57,6 +70,19 @@ export function ConnectionCard({ connection, ownerName, ownerAvatarColor, onChan
       toast.error("Não foi possível desconectar. Tente novamente.");
     } finally {
       setDisconnecting(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    setDeleting(true);
+    try {
+      await api.deleteConnection(connection.id);
+      onDeleted(connection.id);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Não foi possível excluir a conexão.");
+    } finally {
+      setDeleting(false);
+      setConfirmingDelete(false);
     }
   }
 
@@ -91,9 +117,12 @@ export function ConnectionCard({ connection, ownerName, ownerAvatarColor, onChan
         )}
       </CardContent>
 
-      <CardFooter>
+      <CardFooter className="gap-2">
         <Button variant={isConnected ? "outline" : "default"} onClick={handleToggle} disabled={disconnecting}>
           {isConnected ? (disconnecting ? "Desconectando…" : "Desconectar") : "Conectar"}
+        </Button>
+        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setConfirmingDelete(true)}>
+          Excluir
         </Button>
       </CardFooter>
 
@@ -104,6 +133,25 @@ export function ConnectionCard({ connection, ownerName, ownerAvatarColor, onChan
         ownerName={ownerName}
         onChanged={onChanged}
       />
+
+      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir conexão de {ownerName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso desconecta o número da Evolution API e remove esta conexão. Depois de excluir, é possível cadastrar
+              um número novo (ou o mesmo de novo) e parear do zero — útil se o pareamento ficou travado ou o número
+              cadastrado estava errado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? "Excluindo…" : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
