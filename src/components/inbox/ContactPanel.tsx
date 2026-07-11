@@ -40,7 +40,7 @@ function initialsOf(name: string): string {
 }
 
 export function ContactPanel({ contactId }: ContactPanelProps) {
-  const { state, dispatch, refreshCrmData } = useCrm();
+  const { state, refreshCrmData } = useCrm();
   const navigate = useNavigate();
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
   const [apptDialogOpen, setApptDialogOpen] = useState(false);
@@ -63,19 +63,13 @@ export function ContactPanel({ contactId }: ContactPanelProps) {
   async function handleMoveStage(stage: Stage) {
     if (!activeDeal || stage === activeDeal.stage) return;
 
-    if (state.isRealSession) {
-      try {
-        await api.moveDeal(activeDeal.id, stage);
-        await refreshCrmData();
-        toast.success(`Negócio movido para ${STAGE_LABELS[stage]}.`);
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao mover negócio.");
-      }
-      return;
+    try {
+      await api.moveDeal(activeDeal.id, stage);
+      await refreshCrmData();
+      toast.success(`Negócio movido para ${STAGE_LABELS[stage]}.`);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao mover negócio.");
     }
-
-    dispatch({ type: "MOVE_DEAL", dealId: activeDeal.id, stage });
-    toast.success(`Negócio movido para ${STAGE_LABELS[stage]}.`);
   }
 
   return (

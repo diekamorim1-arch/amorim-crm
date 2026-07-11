@@ -1,8 +1,7 @@
 // ActivityTimeline — histórico cronológico (mais recente primeiro) de um
-// contato: mensagens, mudanças de estágio, notas, agendamentos e vendas. Numa
-// sessão real busca as activities direto da API (não há endpoint de listagem
-// por tenant inteiro, só por contactId — daí o fetch ser local a este
-// componente); no modo demo continua lendo do store como antes.
+// contato: mensagens, mudanças de estágio, notas, agendamentos e vendas.
+// Busca as activities direto da API (não há endpoint de listagem por tenant
+// inteiro, só por contactId — daí o fetch ser local a este componente).
 
 import { useEffect, useState } from "react";
 import {
@@ -16,11 +15,10 @@ import {
 
 import { api, mapActivity } from "@/lib/apiClient";
 import { relativeTime } from "@/lib/format";
-import { tenantScope } from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
 import type { Activity, ActivityType } from "@/lib/types";
 
-const ACTIVITY_ICONS: Record<ActivityType, LucideIcon> = {
+export const ACTIVITY_ICONS: Record<ActivityType, LucideIcon> = {
   mensagem: MessageCircle,
   mudanca_estagio: ArrowRightLeft,
   nota: StickyNote,
@@ -33,11 +31,10 @@ interface ActivityTimelineProps {
 }
 
 export function ActivityTimeline({ contactId }: ActivityTimelineProps) {
-  const { state, dataVersion } = useCrm();
+  const { dataVersion } = useCrm();
   const [remoteActivities, setRemoteActivities] = useState<Activity[]>([]);
 
   useEffect(() => {
-    if (!state.isRealSession) return;
     let active = true;
     api.listActivities(contactId).then((rows) => {
       if (active) setRemoteActivities(rows.map(mapActivity));
@@ -45,11 +42,11 @@ export function ActivityTimeline({ contactId }: ActivityTimelineProps) {
     return () => {
       active = false;
     };
-  }, [contactId, state.isRealSession, dataVersion]);
+  }, [contactId, dataVersion]);
 
-  const activities = (
-    state.isRealSession ? remoteActivities : tenantScope(state).activities.filter((a) => a.contactId === contactId)
-  ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const activities = [...remoteActivities].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
 
   if (activities.length === 0) {
     return (

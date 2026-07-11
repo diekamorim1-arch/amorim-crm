@@ -3,6 +3,7 @@
 import type {
   AppointmentStatus,
   AppointmentType,
+  BillingStatus,
   ConnectionStatus,
   JourneyStatus,
   LossReason,
@@ -81,6 +82,20 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const PLAN_LABELS: Record<"starter" | "pro", string> = {
   starter: "Starter",
   pro: "Pro",
+};
+
+// Catálogo de planos — só usado pra exibir preço/ciclo e sugerir quantos
+// dias renovar na aba Planos do admin. Billing é manual (sem gateway de
+// pagamento): não há cobrança automática nem tabela de preços no banco.
+export const PLAN_CATALOG: Record<"starter" | "pro", { price: number; cycleDays: number }> = {
+  starter: { price: 97, cycleDays: 30 },
+  pro: { price: 197, cycleDays: 30 },
+};
+
+export const BILLING_STATUS_LABELS: Record<BillingStatus, string> = {
+  em_dia: "Em dia",
+  vencido: "Vencido",
+  cancelado: "Cancelado",
 };
 
 export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {

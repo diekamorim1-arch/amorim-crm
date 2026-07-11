@@ -40,7 +40,7 @@ interface EditDealDialogProps {
 }
 
 export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps) {
-  const { state, dispatch, refreshCrmData } = useCrm();
+  const { state, refreshCrmData } = useCrm();
   const { suppliers, supplierProducts } = tenantScope(state);
 
   const [value, setValue] = useState("");
@@ -96,36 +96,20 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
     event.preventDefault();
     if (!deal) return;
 
-    if (state.isRealSession) {
-      try {
-        await api.updateDeal(deal.id, { value: parsedValue });
-        await api.updateDealFinancials(deal.id, {
-          supplier_product_id: supplierProductId || undefined,
-          supplier_value: parsedSupplierValue,
-          gift_value: parsedGiftValue,
-          freight_value: parsedFreightValue,
-        });
-        await refreshCrmData();
-        toast.success(`Negócio ${deal.title} atualizado.`);
-        handleOpenChange(false);
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar negócio.");
-      }
-      return;
+    try {
+      await api.updateDeal(deal.id, { value: parsedValue });
+      await api.updateDealFinancials(deal.id, {
+        supplier_product_id: supplierProductId || undefined,
+        supplier_value: parsedSupplierValue,
+        gift_value: parsedGiftValue,
+        freight_value: parsedFreightValue,
+      });
+      await refreshCrmData();
+      toast.success(`Negócio ${deal.title} atualizado.`);
+      handleOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar negócio.");
     }
-
-    dispatch({
-      type: "UPDATE_DEAL_FINANCIALS",
-      dealId: deal.id,
-      value: parsedValue,
-      supplierProductId: supplierProductId || undefined,
-      supplierValue: parsedSupplierValue,
-      giftValue: parsedGiftValue,
-      freightValue: parsedFreightValue,
-    });
-    toast.success(`Negócio ${deal.title} atualizado.`);
-
-    handleOpenChange(false);
   }
 
   return (

@@ -40,8 +40,8 @@ import { APPOINTMENT_TYPE_LABELS } from "@/lib/constants";
 import { toDateInputValue } from "@/components/agenda/weekGridMath";
 import { cn } from "@/lib/utils";
 import { tenantScope } from "@/lib/selectors";
-import { newId, useCrm } from "@/lib/store";
-import type { Activity, Appointment, AppointmentType } from "@/lib/types";
+import { useCrm } from "@/lib/store";
+import type { Appointment, AppointmentType } from "@/lib/types";
 
 interface AppointmentDialogProps {
   contactId?: string;
@@ -101,7 +101,7 @@ function buildInitialState(
 const EMPTY_ERRORS = { contact: "", horario: "" };
 
 export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appointment }: AppointmentDialogProps) {
-  const { state, dispatch, refreshCrmData } = useCrm();
+  const { state, refreshCrmData } = useCrm();
   const { contacts, deals, users } = tenantScope(state);
   const defaultOwnerId = state.session?.userId ?? users[0]?.id ?? "";
 
@@ -173,91 +173,42 @@ export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appoi
     const endsAt = new Date(`${form.date}T${form.endTime}`).toISOString();
     const resolvedDealId = form.dealId === NO_DEAL ? undefined : form.dealId;
 
-    if (state.isRealSession) {
-      try {
-        if (isEditing && appointment) {
-          await api.updateAppointment(appointment.id, {
-            contact_id: form.contactId,
-            deal_id: resolvedDealId,
-            type: form.type,
-            starts_at: startsAt,
-            ends_at: endsAt,
-            owner_id: form.ownerId,
-            note: form.note.trim() || undefined,
-          });
-          await refreshCrmData();
-          toast.success(`Agendamento de ${contact.name} atualizado.`);
-        } else {
-          await api.createAppointment({
-            contact_id: form.contactId,
-            deal_id: resolvedDealId,
-            type: form.type,
-            starts_at: startsAt,
-            ends_at: endsAt,
-            owner_id: form.ownerId,
-            note: form.note.trim() || undefined,
-          });
-          await api.createActivity({
-            contact_id: form.contactId,
-            deal_id: resolvedDealId,
-            type: "agendamento",
-            description: `Agendamento de ${APPOINTMENT_TYPE_LABELS[form.type].toLowerCase()} criado.`,
-          });
-          await refreshCrmData();
-          toast.success(`Agendamento criado para ${contact.name}.`);
-        }
-        handleOpenChange(false);
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao salvar agendamento.");
+    try {
+      if (isEditing && appointment) {
+        await api.updateAppointment(appointment.id, {
+          contact_id: form.contactId,
+          deal_id: resolvedDealId,
+          type: form.type,
+          starts_at: startsAt,
+          ends_at: endsAt,
+          owner_id: form.ownerId,
+          note: form.note.trim() || undefined,
+        });
+        await refreshCrmData();
+        toast.success(`Agendamento de ${contact.name} atualizado.`);
+      } else {
+        await api.createAppointment({
+          contact_id: form.contactId,
+          deal_id: resolvedDealId,
+          type: form.type,
+          starts_at: startsAt,
+          ends_at: endsAt,
+          owner_id: form.ownerId,
+          note: form.note.trim() || undefined,
+        });
+        await api.createActivity({
+          contact_id: form.contactId,
+          deal_id: resolvedDealId,
+          type: "agendamento",
+          description: `Agendamento de ${APPOINTMENT_TYPE_LABELS[form.type].toLowerCase()} criado.`,
+        });
+        await refreshCrmData();
+        toast.success(`Agendamento criado para ${contact.name}.`);
       }
-      return;
+      handleOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao salvar agendamento.");
     }
-
-    if (isEditing && appointment) {
-      const updated: Appointment = {
-        ...appointment,
-        type: form.type,
-        contactId: form.contactId,
-        dealId: resolvedDealId,
-        startsAt,
-        endsAt,
-        ownerId: form.ownerId,
-        note: form.note.trim() || undefined,
-      };
-      dispatch({ type: "UPDATE_APPOINTMENT", appointment: updated });
-      toast.success(`Agendamento de ${contact.name} atualizado.`);
-    } else {
-      const newAppointment: Appointment = {
-        id: newId("appt"),
-        tenantId: state.session.tenantId,
-        contactId: form.contactId,
-        dealId: resolvedDealId,
-        type: form.type,
-        startsAt,
-        endsAt,
-        status: "agendado",
-        ownerId: form.ownerId,
-        note: form.note.trim() || undefined,
-        createdAt: new Date().toISOString(),
-      };
-      dispatch({ type: "ADD_APPOINTMENT", appointment: newAppointment });
-
-      const activity: Activity = {
-        id: newId("activity"),
-        tenantId: state.session.tenantId,
-        contactId: form.contactId,
-        dealId: resolvedDealId,
-        userId: state.session.userId,
-        type: "agendamento",
-        description: `Agendamento de ${APPOINTMENT_TYPE_LABELS[form.type].toLowerCase()} criado.`,
-        createdAt: new Date().toISOString(),
-      };
-      dispatch({ type: "ADD_ACTIVITY", activity });
-
-      toast.success(`Agendamento criado para ${contact.name}.`);
-    }
-
-    handleOpenChange(false);
   }
 
   return (

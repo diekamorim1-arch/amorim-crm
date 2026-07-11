@@ -10,10 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { buildSeed } from "./seed";
 import { newId } from "./id";
+import { isImpersonating } from "./selectors";
 import { supabase } from "./supabaseClient";
-import { api, mapAppointment, mapContact, mapDeal } from "./apiClient";
+import { api, mapAppointment, mapContact, mapDeal, mapUser, setImpersonatedTenantId } from "./apiClient";
 import type {
   Activity,
   Appointment,
@@ -30,7 +30,6 @@ import type {
   Supplier,
   SupplierPriceChange,
   SupplierProduct,
-  Tenant,
   User,
 } from "./types";
 
@@ -45,10 +44,7 @@ export { newId };
 export type { Dispatch };
 
 export type CrmAction =
-  | { type: "LOGIN"; userId: string }
   | { type: "LOGOUT" }
-  | { type: "SWITCH_SESSION"; userId: string }
-  | { type: "ENTER_TENANT_AS_GESTOR"; tenantId: string }
   | { type: "MOVE_DEAL"; dealId: string; stage: Stage }
   | { type: "MARK_DEAL_LOST"; dealId: string; reason: LossReason }
   | { type: "ADD_CONTACT"; contact: Contact }
@@ -63,10 +59,9 @@ export type CrmAction =
   | { type: "UPDATE_APPOINTMENT"; appointment: Appointment }
   | { type: "ADD_ACTIVITY"; activity: Activity }
   | { type: "SET_CONNECTION_STATUS"; connectionId: string; status: ConnectionStatus }
-  | { type: "UPDATE_TENANT"; tenant: Tenant }
-  | { type: "ADD_TENANT"; tenant: Tenant }
   | { type: "ADD_USER"; user: User }
   | { type: "UPDATE_USER"; user: User }
+  | { type: "REMOVE_USER"; userId: string }
   | { type: "ADD_SUPPLIER"; supplier: Supplier }
   | { type: "UPDATE_SUPPLIER"; supplier: Supplier }
   | { type: "ADD_SUPPLIER_PRODUCT"; product: SupplierProduct }
@@ -78,8 +73,9 @@ export type CrmAction =
   | { type: "ADD_EXPENSE"; expense: Expense }
   | { type: "REMOVE_EXPENSE"; expenseId: string }
   | { type: "SET_AUTH_SESSION"; user: User }
-  | { type: "SET_REMOTE_DATA"; contacts: Contact[]; deals: Deal[]; appointments: Appointment[] }
-  | { type: "RESET_DEMO" };
+  | { type: "SET_REMOTE_DATA"; contacts: Contact[]; deals: Deal[]; appointments: Appointment[]; users: User[] }
+  | { type: "ENTER_TENANT_AS_GESTOR"; tenantId: string; tenantName: string }
+  | { type: "EXIT_IMPERSONATION" };
 
 function countWonDeals(state: CrmState, contactId: string): number {
   return state.deals.filter((d) => d.contactId === contactId && d.outcome === "ganho").length;
@@ -88,30 +84,8 @@ function countWonDeals(state: CrmState, contactId: string): number {
 /** Reducer puro — sem dependências de React, testável isoladamente. */
 export function crmReducer(state: CrmState, action: CrmAction): CrmState {
   switch (action.type) {
-    case "LOGIN":
-    case "SWITCH_SESSION": {
-      const user = state.users.find((u) => u.id === action.userId);
-      if (!user) return state;
-      return {
-        ...state,
-        session: { userId: user.id, tenantId: user.tenantId ?? "", role: user.role },
-        isRealSession: false,
-      };
-    }
-
     case "LOGOUT": {
-      return { ...state, session: null, isRealSession: false };
-    }
-
-    case "ENTER_TENANT_AS_GESTOR": {
-      if (!state.session) return state;
-      // A sessão vira "gestor" daquele tenant — não basta trocar o tenantId:
-      // Sidebar/MobileBottomNav e o guard do AppShell decidem menu/rotas
-      // olhando só para `role`. O `userId` original (admin_saas) é mantido de
-      // propósito: "Voltar ao painel" apenas dá SWITCH_SESSION nesse mesmo
-      // userId, que re-deriva a sessão original a partir do User (admin_saas,
-      // sem tenant) — sem precisar de um campo extra para lembrar de onde veio.
-      return { ...state, session: { ...state.session, tenantId: action.tenantId, role: "gestor" } };
+      return { ...state, session: null };
     }
 
     case "MOVE_DEAL": {
@@ -294,20 +268,16 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       };
     }
 
-    case "UPDATE_TENANT": {
-      return { ...state, tenants: state.tenants.map((t) => (t.id === action.tenant.id ? action.tenant : t)) };
-    }
-
-    case "ADD_TENANT": {
-      return { ...state, tenants: [...state.tenants, action.tenant] };
-    }
-
     case "ADD_USER": {
       return { ...state, users: [...state.users, action.user] };
     }
 
     case "UPDATE_USER": {
       return { ...state, users: state.users.map((u) => (u.id === action.user.id ? action.user : u)) };
+    }
+
+    case "REMOVE_USER": {
+      return { ...state, users: state.users.filter((u) => u.id !== action.userId) };
     }
 
     case "ADD_SUPPLIER": {
@@ -412,32 +382,55 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       const users = exists
         ? state.users.map((u) => (u.id === action.user.id ? action.user : u))
         : [...state.users, action.user];
+
+      // onAuthStateChange dispara este action pra QUALQUER evento do Supabase,
+      // inclusive TOKEN_REFRESHED (ex.: ao voltar o foco da aba depois de um
+      // tempo parado) — não só um login novo. Se o admin_saas estava
+      // impersonando uma loja (session.role "gestor", mas o perfil real
+      // recém-buscado é admin_saas), preserva o tenant impersonado em vez de
+      // resetar pro perfil real — senão o admin "cai" da loja toda vez que a
+      // aba volta o foco e o Supabase revalida o token.
+      const wasImpersonating =
+        state.session?.userId === action.user.id &&
+        state.session.role === "gestor" &&
+        action.user.role === "admin_saas";
+
+      const session = wasImpersonating
+        ? state.session!
+        : { userId: action.user.id, tenantId: action.user.tenantId ?? "", role: action.user.role };
+
+      return { ...state, users, session };
+    }
+
+    case "ENTER_TENANT_AS_GESTOR": {
+      // Só admin_saas pode "vestir" uma loja — mantém session.userId
+      // (o próprio admin) pra EXIT_IMPERSONATION conseguir voltar depois.
+      if (!state.session || state.session.role !== "admin_saas") return state;
       return {
         ...state,
-        users,
-        session: { userId: action.user.id, tenantId: action.user.tenantId ?? "", role: action.user.role },
-        isRealSession: true,
+        session: { ...state.session, role: "gestor", tenantId: action.tenantId, tenantName: action.tenantName },
       };
     }
 
-    case "SET_REMOTE_DATA": {
-      return { ...state, contacts: action.contacts, deals: action.deals, appointments: action.appointments };
+    case "EXIT_IMPERSONATION": {
+      // Restaura a sessão a partir do perfil real do admin em state.users —
+      // ENTER_TENANT_AS_GESTOR nunca altera esse registro, só state.session.
+      if (!state.session) return state;
+      const realUser = state.users.find((u) => u.id === state.session!.userId);
+      if (!realUser) return state;
+      return { ...state, session: { userId: realUser.id, tenantId: realUser.tenantId ?? "", role: realUser.role } };
     }
 
-    case "RESET_DEMO": {
-      const fresh = buildSeed();
-      if (!state.session) return fresh;
-      // buildSeed() gera todos os ids via crypto.randomUUID() — não são
-      // estáveis entre chamadas. Preservar session.userId/tenantId verbatim
-      // apontaria para ids da seed antiga, inexistentes na seed nova, e
-      // deixaria currentUser()/tenantScope() vazios (tela em branco, sem
-      // sessão válida para nem sequer trocar de usuário). Re-resolvemos o
-      // usuário pelo e-mail (literal fixo na seed, estável entre chamadas)
-      // para reconstruir uma sessão válida contra o novo state.
-      const oldUser = state.users.find((u) => u.id === state.session!.userId);
-      const newUser = oldUser ? fresh.users.find((u) => u.email === oldUser.email) : undefined;
-      if (!newUser) return fresh;
-      return { ...fresh, session: { userId: newUser.id, tenantId: newUser.tenantId ?? "", role: newUser.role } };
+    case "SET_REMOTE_DATA": {
+      // action.users já vem só do tenant ativo (o backend escopa por
+      // require_tenant) — substitui os usuários desse tenant sem mexer nos
+      // de outros tenants (dados demo/seed) nem no próprio perfil do
+      // admin_saas (tenantId null, nunca bate no filtro abaixo).
+      const tenantId = state.session?.tenantId;
+      const users = tenantId
+        ? [...state.users.filter((u) => u.tenantId !== tenantId), ...action.users]
+        : state.users;
+      return { ...state, contacts: action.contacts, deals: action.deals, appointments: action.appointments, users };
     }
 
     default:
@@ -449,15 +442,15 @@ interface RemoteData {
   contacts: Contact[];
   deals: Deal[];
   appointments: Appointment[];
+  users: User[];
 }
 
 interface CrmContextValue {
   state: CrmState;
   dispatch: Dispatch<CrmAction>;
-  /** Refaz o fetch de contacts/deals/appointments do backend real e substitui
-   * essas 3 coleções no state (SET_REMOTE_DATA). Só faz sentido — e só deve
-   * ser chamada — quando state.isRealSession é true; usada por todo componente
-   * que muda esses dados numa sessão real, logo após a chamada de API que
+  /** Refaz o fetch de contacts/deals/appointments/users do backend real e
+   * substitui essas coleções no state (SET_REMOTE_DATA). Usada por todo
+   * componente que muda esses dados, logo após a chamada de API que
    * persistiu a mudança. Retorna os dados já mapeados para uso imediato pelo
    * chamador (ex.: ler o journeyStatus atualizado de um contato sem esperar
    * o próximo render). */
@@ -472,8 +465,26 @@ interface CrmContextValue {
 
 const CrmContext = createContext<CrmContextValue | null>(null);
 
+const EMPTY_STATE: CrmState = {
+  tenants: [],
+  users: [],
+  contacts: [],
+  deals: [],
+  conversations: [],
+  messages: [],
+  appointments: [],
+  activities: [],
+  connections: [],
+  suppliers: [],
+  supplierProducts: [],
+  supplierPriceChanges: [],
+  attachments: [],
+  expenses: [],
+  session: null,
+};
+
 export function CrmProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [state, dispatch] = useReducer(crmReducer, undefined, buildSeed);
+  const [state, dispatch] = useReducer(crmReducer, EMPTY_STATE);
   // Só true depois da 1ª checagem de sessão do Supabase (getSession inicial).
   // Sem isso, o guard de AppShell veria state.session como estava persistido
   // (ok pro modo demo) mas um usuário real autenticado sofreria um flash de
@@ -482,15 +493,17 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
   const [dataVersion, setDataVersion] = useState(0);
 
   async function refreshCrmData(): Promise<RemoteData> {
-    const [apiContacts, apiDeals, apiAppointments] = await Promise.all([
+    const [apiContacts, apiDeals, apiAppointments, apiUsers] = await Promise.all([
       api.listContacts(),
       api.listDeals(),
       api.listAppointments(),
+      api.listUsers(),
     ]);
     const data: RemoteData = {
       contacts: apiContacts.map(mapContact),
       deals: apiDeals.map(mapDeal),
       appointments: apiAppointments.map(mapAppointment),
+      users: apiUsers.map(mapUser),
     };
     dispatch({ type: "SET_REMOTE_DATA", ...data });
     setDataVersion((v) => v + 1);
@@ -501,9 +514,6 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
     let active = true;
 
     async function applyRealSession(session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]) {
-      // Sem sessão real do Supabase: não mexe no state.session existente —
-      // pode ser um login de demonstração (LOGIN/SWITCH_SESSION, dev-only)
-      // que não tem por que ser derrubado só porque nunca houve auth real.
       if (!session) return;
 
       const { data: profileRow } = await supabase
@@ -521,6 +531,7 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
         name: profileRow.name,
         avatarColor: profileRow.avatar_color,
         createdAt: profileRow.created_at,
+        isActive: profileRow.is_active ?? true,
       };
       dispatch({ type: "SET_AUTH_SESSION", user });
       try {
@@ -550,6 +561,14 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Mantém o header X-Impersonate-Tenant do apiClient sincronizado com a
+  // sessão: liga quando ENTER_TENANT_AS_GESTOR ou o re-sync de
+  // SET_AUTH_SESSION preservam uma impersonação, desliga quando
+  // EXIT_IMPERSONATION (ou qualquer outro caminho) volta pro perfil real.
+  useEffect(() => {
+    setImpersonatedTenantId(isImpersonating(state) ? state.session!.tenantId : null);
+  }, [state]);
 
   const value = useMemo(() => ({ state, dispatch, refreshCrmData, dataVersion }), [state, dataVersion]);
 

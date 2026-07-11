@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { daysAgo } from "./format";
 import { crmReducer } from "./store";
-import { buildSeed } from "./seed";
-import { currentUser, dashboardMetrics, dealsByStage, isStale, lostDeals, priceHistoryForProduct, tenantScope } from "./selectors";
+import { dashboardMetrics, dealsByStage, isStale, lostDeals, priceHistoryForProduct } from "./selectors";
 import type { Attachment, Contact, Conversation, CrmState, Deal, Expense, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
 
 function baseState(): CrmState {
@@ -14,6 +13,7 @@ function baseState(): CrmState {
     plan: "pro",
     status: "ativo",
     createdAt: now,
+    billingStatus: "em_dia",
     settings: {
       tags: [],
       lossReasons: ["preco", "prazo_entrega", "sem_modelo", "concorrencia", "sem_resposta", "desistiu"],
@@ -28,6 +28,7 @@ function baseState(): CrmState {
     role: "atendente",
     avatarColor: "#4f46e5",
     createdAt: now,
+    isActive: true,
   };
   const contact: Contact = {
     id: "contact_1",
@@ -84,7 +85,6 @@ function baseState(): CrmState {
     attachments: [],
     expenses: [],
     session: { userId: owner.id, tenantId: tenant.id, role: "atendente" },
-    isRealSession: false,
   };
 }
 
@@ -181,51 +181,12 @@ describe("crmReducer — mensagens", () => {
   });
 });
 
-describe("crmReducer — RESET_DEMO", () => {
-  // buildSeed() gera todos os ids via crypto.randomUUID() — não são estáveis
-  // entre chamadas. Por isso a asserção antiga (`next.session).toEqual(state.session)`)
-  // só passava porque o reducer fazia um blind copy de `state.session`, sem
-  // validar que aqueles ids ainda existiam na seed nova — exatamente o bug:
-  // currentUser()/tenantScope() ficavam vazios/null depois do reset. As
-  // asserções abaixo re-resolvem por e-mail (estável) e verificam que a tela
-  // não fica em branco.
-  it("re-resolve a sessão de um usuário real da seed por e-mail: currentUser não fica null e tenantScope tem dados", () => {
-    const seed = buildSeed();
-    const tenant1 = seed.tenants.find((t) => t.slug === "amorim-imports")!;
-    const rafael = seed.users.find((u) => u.name === "Rafael Amorim")!;
-    const state: CrmState = { ...seed, session: { userId: rafael.id, tenantId: tenant1.id, role: "gestor" } };
-
-    const next = crmReducer(state, { type: "RESET_DEMO" });
-
-    expect(next.session).not.toBeNull();
-    const me = currentUser(next);
-    expect(me).not.toBeNull();
-    expect(me?.email).toBe(rafael.email);
-    expect(me?.role).toBe(rafael.role);
-
-    expect(tenantScope(next).contacts.length).toBeGreaterThan(0);
-    expect(next.tenants.length).toBeGreaterThan(0);
-    expect(next.contacts.length).toBeGreaterThan(0);
-  });
-
-  it("sessão cujo e-mail não existe na seed nova (dados sintéticos de teste) cai com segurança para sessão nula, sem quebrar as coleções", () => {
-    // baseState() usa ids e e-mail sintéticos que nunca existirão numa seed
-    // real gerada por buildSeed(). Sem correspondência por e-mail, o reducer
-    // não deve inventar uma sessão inválida: cai para `fresh` (session: null),
-    // que redireciona ao /login com segurança em vez de deixar a UI presa
-    // numa sessão-fantasma.
-    const state = baseState();
-    const next = crmReducer(state, { type: "RESET_DEMO" });
-    expect(next.session).toBeNull();
-    expect(next.tenants.length).toBeGreaterThan(0);
-    expect(next.contacts.length).toBeGreaterThan(0);
-  });
-
-  it("sem sessão, apenas restaura o seed (sem tentar resolver usuário)", () => {
-    const state = { ...baseState(), session: null };
-    const next = crmReducer(state, { type: "RESET_DEMO" });
-    expect(next.session).toBeNull();
-    expect(next.tenants.length).toBeGreaterThan(0);
+describe("crmReducer — REMOVE_USER", () => {
+  it("remove o usuário pelo id sem afetar os demais", () => {
+    const base = baseState();
+    const next = crmReducer(base, { type: "REMOVE_USER", userId: base.users[0].id });
+    expect(next.users.find((u) => u.id === base.users[0].id)).toBeUndefined();
+    expect(next.users).toHaveLength(base.users.length - 1);
   });
 });
 
@@ -245,21 +206,6 @@ describe("crmReducer — ADD_CONVERSATION", () => {
     const next = crmReducer(state, { type: "ADD_CONVERSATION", conversation });
     expect(next.conversations).toHaveLength(state.conversations.length + 1);
     expect(next.conversations.some((c) => c.id === "conv_new")).toBe(true);
-  });
-});
-
-describe("crmReducer — ENTER_TENANT_AS_GESTOR (impersonação)", () => {
-  it("assume tenantId + role gestor mantendo o userId do admin, e SWITCH_SESSION de volta restaura role admin_saas", () => {
-    const seed = buildSeed();
-    const admin = seed.users.find((u) => u.role === "admin_saas")!;
-    const tenant = seed.tenants[0];
-    const state: CrmState = { ...seed, session: { userId: admin.id, tenantId: "", role: "admin_saas" } };
-
-    const impersonated = crmReducer(state, { type: "ENTER_TENANT_AS_GESTOR", tenantId: tenant.id });
-    expect(impersonated.session).toEqual({ userId: admin.id, tenantId: tenant.id, role: "gestor" });
-
-    const restored = crmReducer(impersonated, { type: "SWITCH_SESSION", userId: admin.id });
-    expect(restored.session).toEqual({ userId: admin.id, tenantId: "", role: "admin_saas" });
   });
 });
 
@@ -458,6 +404,7 @@ describe("crmReducer — SET_AUTH_SESSION (login real via Supabase Auth)", () =>
       role: "gestor",
       avatarColor: "#4f46e5",
       createdAt: new Date().toISOString(),
+      isActive: true,
     };
 
     const next = crmReducer(base, { type: "SET_AUTH_SESSION", user });
@@ -481,7 +428,7 @@ describe("crmReducer — SET_AUTH_SESSION (login real via Supabase Auth)", () =>
     });
   });
 
-  it("admin_saas (tenantId null) vira session.tenantId string vazia, mesma convenção de LOGIN", () => {
+  it("admin_saas (tenantId null) vira session.tenantId string vazia", () => {
     const base = baseState();
     const admin: User = {
       id: "auth-admin-1",
@@ -491,10 +438,95 @@ describe("crmReducer — SET_AUTH_SESSION (login real via Supabase Auth)", () =>
       role: "admin_saas",
       avatarColor: "#0f172a",
       createdAt: new Date().toISOString(),
+      isActive: true,
     };
 
     const next = crmReducer(base, { type: "SET_AUTH_SESSION", user: admin });
     expect(next.session).toEqual({ userId: admin.id, tenantId: "", role: "admin_saas" });
+  });
+});
+
+describe("crmReducer — impersonação (ENTER_TENANT_AS_GESTOR / EXIT_IMPERSONATION)", () => {
+  function stateWithAdmin(): CrmState {
+    const base = baseState();
+    const admin: User = {
+      id: "admin_1",
+      tenantId: null,
+      name: "Admin Real",
+      email: "admin@amorimcrm.com.br",
+      role: "admin_saas",
+      avatarColor: "#0f172a",
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    };
+    return {
+      ...base,
+      users: [...base.users, admin],
+      session: { userId: admin.id, tenantId: "", role: "admin_saas" },
+    };
+  }
+
+  it("ENTER_TENANT_AS_GESTOR vira session.role gestor no tenant escolhido, preservando userId do admin", () => {
+    const base = stateWithAdmin();
+    const next = crmReducer(base, {
+      type: "ENTER_TENANT_AS_GESTOR",
+      tenantId: "tenant_1",
+      tenantName: "Loja Teste",
+    });
+
+    expect(next.session).toEqual({
+      userId: "admin_1",
+      tenantId: "tenant_1",
+      role: "gestor",
+      tenantName: "Loja Teste",
+    });
+    // state.users continua com o perfil real do admin intacto — é isso que
+    // permite EXIT_IMPERSONATION reconstruir a sessão real depois.
+    expect(next.users.find((u) => u.id === "admin_1")?.role).toBe("admin_saas");
+  });
+
+  it("ignora ENTER_TENANT_AS_GESTOR quando a sessão atual não é admin_saas", () => {
+    const base = baseState(); // session.role === "atendente"
+    const next = crmReducer(base, {
+      type: "ENTER_TENANT_AS_GESTOR",
+      tenantId: "tenant_1",
+      tenantName: "Loja Teste",
+    });
+    expect(next).toBe(base);
+  });
+
+  it("EXIT_IMPERSONATION restaura a sessão real do admin a partir de state.users", () => {
+    const base = stateWithAdmin();
+    const impersonating = crmReducer(base, {
+      type: "ENTER_TENANT_AS_GESTOR",
+      tenantId: "tenant_1",
+      tenantName: "Loja Teste",
+    });
+
+    const next = crmReducer(impersonating, { type: "EXIT_IMPERSONATION" });
+    expect(next.session).toEqual({ userId: "admin_1", tenantId: "", role: "admin_saas" });
+  });
+
+  it("SET_AUTH_SESSION (re-sync/TOKEN_REFRESHED) preserva o tenant impersonado", () => {
+    const base = stateWithAdmin();
+    const impersonating = crmReducer(base, {
+      type: "ENTER_TENANT_AS_GESTOR",
+      tenantId: "tenant_1",
+      tenantName: "Loja Teste",
+    });
+
+    // onAuthStateChange busca o profile real de novo (admin_saas) — sem a
+    // guarda de wasImpersonating, isso derrubaria a sessão de volta pro
+    // painel do admin no meio do trabalho dentro da loja.
+    const realAdminProfile: User = impersonating.users.find((u) => u.id === "admin_1")!;
+    const next = crmReducer(impersonating, { type: "SET_AUTH_SESSION", user: realAdminProfile });
+
+    expect(next.session).toEqual({
+      userId: "admin_1",
+      tenantId: "tenant_1",
+      role: "gestor",
+      tenantName: "Loja Teste",
+    });
   });
 });
 
@@ -608,10 +640,46 @@ describe("dashboardMetrics", () => {
   });
 
   it("byChannel.won conta contatos distintos com ao menos uma venda, nunca passando de total", () => {
-    const seed = buildSeed();
-    const tenant1 = seed.tenants.find((t) => t.slug === "amorim-imports")!;
-    const rafael = seed.users.find((u) => u.name === "Rafael Amorim")!;
-    const state: CrmState = { ...seed, session: { userId: rafael.id, tenantId: tenant1.id, role: "gestor" } };
+    const base = baseState();
+    const now = new Date().toISOString();
+
+    // 4 contatos de origem "indicacao": thiago (sem venda), eduardo (1
+    // venda), marcelo e fernanda (2 vendas cada, ou seja, clientes
+    // recorrentes) — testa que won conta contatos distintos, não deals.
+    const makeContact = (id: string, name: string): Contact => ({
+      ...base.contacts[0],
+      id,
+      name,
+      origin: "indicacao",
+    });
+    const thiago = makeContact("contact_thiago", "Thiago");
+    const eduardo = makeContact("contact_eduardo", "Eduardo");
+    const marcelo = makeContact("contact_marcelo", "Marcelo");
+    const fernanda = makeContact("contact_fernanda", "Fernanda");
+
+    const makeDeal = (id: string, contactId: string, outcome: Deal["outcome"]): Deal => ({
+      ...base.deals[0],
+      id,
+      contactId,
+      outcome,
+      stage: outcome === "ganho" ? "pos_venda" : base.deals[0].stage,
+      stageChangedAt: now,
+    });
+
+    const deals: Deal[] = [
+      makeDeal("deal_thiago", thiago.id, "aberto"),
+      makeDeal("deal_eduardo", eduardo.id, "ganho"),
+      makeDeal("deal_marcelo_1", marcelo.id, "ganho"),
+      makeDeal("deal_marcelo_2", marcelo.id, "ganho"),
+      makeDeal("deal_fernanda_1", fernanda.id, "ganho"),
+      makeDeal("deal_fernanda_2", fernanda.id, "ganho"),
+    ];
+
+    const state: CrmState = {
+      ...base,
+      contacts: [thiago, eduardo, marcelo, fernanda],
+      deals,
+    };
 
     const metrics = dashboardMetrics(state);
 
@@ -620,153 +688,14 @@ describe("dashboardMetrics", () => {
     expect(metrics.byChannel.every((row) => row.won <= row.total)).toBe(true);
 
     const indicacao = metrics.byChannel.find((row) => row.origin === "indicacao")!;
-    expect(indicacao.total).toBe(4); // thiago, eduardo, marcelo, fernanda
+    expect(indicacao.total).toBe(4);
     // eduardo (1 ganho), marcelo (2 ganhos) e fernanda (2 ganhos) contam uma
-    // vez cada; thiago (em negociação, sem ganho) não conta.
+    // vez cada; thiago (em aberto, sem ganho) não conta.
     expect(indicacao.won).toBe(3);
   });
 });
 
-describe("buildSeed", () => {
-  it("todo registro de cada coleção tem tenantId válido e FKs existentes", () => {
-    const seed = buildSeed();
-
-    const tenantIds = new Set(seed.tenants.map((t) => t.id));
-    const userIds = new Set(seed.users.map((u) => u.id));
-    const contactIds = new Set(seed.contacts.map((c) => c.id));
-    const dealIds = new Set(seed.deals.map((d) => d.id));
-    const conversationIds = new Set(seed.conversations.map((c) => c.id));
-
-    expect(seed.users.every((u) => u.tenantId === null || tenantIds.has(u.tenantId))).toBe(true);
-
-    for (const c of seed.contacts) {
-      expect(tenantIds.has(c.tenantId)).toBe(true);
-      expect(userIds.has(c.ownerId)).toBe(true);
-    }
-    for (const d of seed.deals) {
-      expect(tenantIds.has(d.tenantId)).toBe(true);
-      expect(contactIds.has(d.contactId)).toBe(true);
-      expect(userIds.has(d.ownerId)).toBe(true);
-      if (d.outcome === "perdido") expect(d.lossReason).toBeDefined();
-    }
-    for (const conv of seed.conversations) {
-      expect(tenantIds.has(conv.tenantId)).toBe(true);
-      expect(contactIds.has(conv.contactId)).toBe(true);
-      if (conv.assigneeId) expect(userIds.has(conv.assigneeId)).toBe(true);
-    }
-    for (const m of seed.messages) {
-      expect(tenantIds.has(m.tenantId)).toBe(true);
-      expect(conversationIds.has(m.conversationId)).toBe(true);
-      if (m.authorId) expect(userIds.has(m.authorId)).toBe(true);
-    }
-    for (const a of seed.appointments) {
-      expect(tenantIds.has(a.tenantId)).toBe(true);
-      expect(contactIds.has(a.contactId)).toBe(true);
-      expect(userIds.has(a.ownerId)).toBe(true);
-      if (a.dealId) expect(dealIds.has(a.dealId)).toBe(true);
-    }
-    for (const act of seed.activities) {
-      expect(tenantIds.has(act.tenantId)).toBe(true);
-      expect(contactIds.has(act.contactId)).toBe(true);
-      expect(userIds.has(act.userId)).toBe(true);
-      if (act.dealId) expect(dealIds.has(act.dealId)).toBe(true);
-    }
-    for (const conn of seed.connections) {
-      expect(tenantIds.has(conn.tenantId)).toBe(true);
-      expect(userIds.has(conn.userId)).toBe(true);
-    }
-  });
-
-  it("fornecedores, produtos e histórico de preço têm FKs válidas", () => {
-    const seed = buildSeed();
-    const supplierIds = new Set(seed.suppliers.map((s) => s.id));
-    const productIds = new Set(seed.supplierProducts.map((p) => p.id));
-
-    for (const product of seed.supplierProducts) {
-      expect(supplierIds.has(product.supplierId)).toBe(true);
-    }
-    for (const change of seed.supplierPriceChanges) {
-      expect(productIds.has(change.supplierProductId)).toBe(true);
-    }
-    for (const deal of seed.deals) {
-      if (deal.supplierProductId) expect(productIds.has(deal.supplierProductId)).toBe(true);
-    }
-
-    // Isolamento: TechStore SP não tem fornecedores.
-    const tenant2 = seed.tenants.find((t) => t.slug !== "amorim-imports")!;
-    expect(seed.suppliers.every((s) => s.tenantId !== tenant2.id)).toBe(true);
-  });
-
-  it("respeita as quantidades do briefing por tenant e as marcas de isolamento", () => {
-    const seed = buildSeed();
-    const tenant1 = seed.tenants.find((t) => t.slug === "amorim-imports")!;
-    const tenant2 = seed.tenants.find((t) => t.slug === "techstore-sp")!;
-    expect(tenant1).toBeDefined();
-    expect(tenant2).toBeDefined();
-
-    const countFor = <T extends { tenantId: string }>(arr: T[], id: string) =>
-      arr.filter((x) => x.tenantId === id).length;
-
-    expect(countFor(seed.contacts, tenant1.id)).toBe(14);
-    expect(countFor(seed.conversations, tenant1.id)).toBe(8);
-    expect(countFor(seed.appointments, tenant1.id)).toBe(10);
-
-    // Board: 2 deals abertos em cada estágio ativo; 2 perdidos; o restante são ganhos (histórico de compras).
-    const tenant1Deals = seed.deals.filter((d) => d.tenantId === tenant1.id);
-    const openByStage = (stage: string) =>
-      tenant1Deals.filter((d) => d.outcome === "aberto" && d.stage === stage).length;
-    expect(openByStage("novo_lead")).toBe(2);
-    expect(openByStage("em_atendimento")).toBe(2);
-    expect(openByStage("negociacao")).toBe(2);
-    expect(openByStage("fechamento")).toBe(2);
-    expect(tenant1Deals.filter((d) => d.outcome === "perdido").length).toBe(2);
-    expect(tenant1Deals.filter((d) => d.outcome === "ganho").length).toBe(13);
-    expect(tenant1Deals.length).toBe(23);
-
-    expect(countFor(seed.contacts, tenant2.id)).toBe(4);
-    expect(countFor(seed.deals, tenant2.id)).toBe(3);
-    expect(countFor(seed.conversations, tenant2.id)).toBe(2);
-    expect(countFor(seed.appointments, tenant2.id)).toBe(2);
-
-    const leads = seed.contacts.filter((c) => c.tenantId === tenant1.id && c.journeyStatus === "lead");
-    const clientes = seed.contacts.filter((c) => c.tenantId === tenant1.id && c.journeyStatus === "cliente");
-    const recorrentes = seed.contacts.filter((c) => c.tenantId === tenant1.id && c.journeyStatus === "recorrente");
-    expect(leads.length).toBe(5);
-    expect(clientes.length).toBe(5);
-    expect(recorrentes.length).toBe(4);
-
-    // journeyStatus lastreado no histórico de compras: lead = 0 ganhos, cliente = 1, recorrente ≥ 2
-    const wonCountFor = (contactId: string) =>
-      seed.deals.filter((d) => d.contactId === contactId && d.outcome === "ganho").length;
-    for (const lead of leads) expect(wonCountFor(lead.id)).toBe(0);
-    for (const cliente of clientes) expect(wonCountFor(cliente.id)).toBe(1);
-    for (const recorrente of recorrentes) expect(wonCountFor(recorrente.id)).toBeGreaterThanOrEqual(2);
-
-    const unassignedUnread = seed.conversations.filter(
-      (c) => c.tenantId === tenant1.id && c.assigneeId === null && c.unread > 0,
-    );
-    expect(unassignedUnread.length).toBe(2);
-
-    const staleDeals = seed.deals.filter((d) => d.tenantId === tenant1.id && isStale(d));
-    expect(staleDeals.length).toBe(1);
-
-    const lostReasons = seed.deals
-      .filter((d) => d.tenantId === tenant1.id && d.outcome === "perdido")
-      .map((d) => d.lossReason);
-    expect(lostReasons.sort()).toEqual(["preco", "sem_resposta"]);
-
-    // admin_saas não pertence a nenhum tenant
-    const admin = seed.users.find((u) => u.role === "admin_saas")!;
-    expect(admin.tenantId).toBeNull();
-
-    // isolamento: nenhum contato/deal/conversa do tenant 2 referencia um usuário do tenant 1
-    const tenant1UserIds = new Set(seed.users.filter((u) => u.tenantId === tenant1.id).map((u) => u.id));
-    const tenant2Contacts = seed.contacts.filter((c) => c.tenantId === tenant2.id);
-    expect(tenant2Contacts.every((c) => !tenant1UserIds.has(c.ownerId))).toBe(true);
-  });
-});
-
-describe("crmReducer — SET_REMOTE_DATA e isRealSession", () => {
+describe("crmReducer — SET_REMOTE_DATA e LOGOUT", () => {
   it("SET_REMOTE_DATA substitui contacts/deals/appointments preservando o resto do state", () => {
     const base = baseState();
     const newContact: Contact = { ...base.contacts[0], id: "contact_remote", name: "Cliente Remoto" };
@@ -777,6 +706,7 @@ describe("crmReducer — SET_REMOTE_DATA e isRealSession", () => {
       contacts: [newContact],
       deals: [newDeal],
       appointments: [],
+      users: [],
     });
 
     expect(next.contacts).toEqual([newContact]);
@@ -786,25 +716,31 @@ describe("crmReducer — SET_REMOTE_DATA e isRealSession", () => {
     expect(next.session).toBe(base.session);
   });
 
-  it("SET_AUTH_SESSION marca isRealSession true; LOGIN/SWITCH_SESSION/LOGOUT voltam para false", () => {
+  it("SET_REMOTE_DATA substitui users só do tenant ativo, preservando usuários de outros tenants", () => {
     const base = baseState();
-    const user: User = {
-      id: "user_real",
-      tenantId: base.tenants[0].id,
-      name: "Usuário Real",
-      email: "real@teste.com.br",
-      role: "gestor",
-      avatarColor: "#000000",
-      createdAt: new Date().toISOString(),
-    };
+    const otherTenantUser: User = { ...base.users[0], id: "user_other_tenant", tenantId: "outro-tenant" };
+    const withOtherUser = { ...base, users: [...base.users, otherTenantUser] };
 
-    const withRealSession = crmReducer(base, { type: "SET_AUTH_SESSION", user });
-    expect(withRealSession.isRealSession).toBe(true);
+    const freshUser: User = { ...base.users[0], name: "Nome Atualizado do Backend" };
+    const next = crmReducer(withOtherUser, {
+      type: "SET_REMOTE_DATA",
+      contacts: [],
+      deals: [],
+      appointments: [],
+      users: [freshUser],
+    });
 
-    const afterLogout = crmReducer(withRealSession, { type: "LOGOUT" });
-    expect(afterLogout.isRealSession).toBe(false);
-
-    const afterSwitch = crmReducer(withRealSession, { type: "SWITCH_SESSION", userId: base.users[0].id });
-    expect(afterSwitch.isRealSession).toBe(false);
+    expect(next.users).toContainEqual(freshUser);
+    expect(next.users).toContainEqual(otherTenantUser);
+    expect(next.users.find((u) => u.id === base.users[0].id && u.name === base.users[0].name)).toBeUndefined();
   });
+
+  it("LOGOUT zera a sessão sem mexer nas demais coleções", () => {
+    const base = baseState();
+    const next = crmReducer(base, { type: "LOGOUT" });
+    expect(next.session).toBeNull();
+    expect(next.users).toBe(base.users);
+    expect(next.contacts).toBe(base.contacts);
+  });
+
 });

@@ -1,9 +1,9 @@
-// ContactFormDialog — dialog único para criar e editar clientes. Em modo de
-// criação (contact === undefined) despacha ADD_CONTACT com journeyStatus
-// "lead"; em modo de edição despacha UPDATE_CONTACT preservando os campos que
-// o formulário não expõe (journeyStatus, firstContactAt, createdAt...).
-// Autossuficiente: lê sessão/usuários do próprio store, então pode ser
-// reaberto por Inbox/Agenda apenas passando contact/open/onOpenChange.
+// ContactFormDialog — dialog único para criar e editar clientes via API. Em
+// modo de criação (contact === undefined) cria com journeyStatus "lead"; em
+// modo de edição atualiza preservando os campos que o formulário não expõe
+// (journeyStatus, firstContactAt, createdAt...). Autossuficiente: lê
+// sessão/usuários do próprio store, então pode ser reaberto por Inbox/Agenda
+// apenas passando contact/open/onOpenChange.
 
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 import { ORIGIN_LABELS, PRODUCT_LINE_LABELS } from "@/lib/constants";
 import { tenantScope } from "@/lib/selectors";
-import { newId, useCrm } from "@/lib/store";
+import { useCrm } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { Contact, Origin, ProductLine } from "@/lib/types";
 
@@ -76,7 +76,7 @@ function valuesFromContact(contact: Contact | undefined, defaultOwnerId: string)
 }
 
 export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDialogProps) {
-  const { state, dispatch, refreshCrmData } = useCrm();
+  const { state, refreshCrmData } = useCrm();
   const users = tenantScope(state).users;
   const defaultOwnerId = contact?.ownerId ?? state.session?.userId ?? "";
 
@@ -121,7 +121,6 @@ export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDi
     setErrors(nextErrors);
     if (nextErrors.name || nextErrors.whatsapp) return;
 
-    const now = new Date().toISOString();
     const tags = values.tags
       .split(",")
       .map((t) => t.trim())
@@ -131,100 +130,42 @@ export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDi
       ? { street: values.street.trim(), city: values.city.trim(), state: values.state.trim(), zip: values.zip.trim() }
       : undefined;
 
-    if (state.isRealSession) {
-      try {
-        if (isEdit && contact) {
-          await api.updateContact(contact.id, {
-            name: values.name.trim(),
-            whatsapp: values.whatsapp.trim(),
-            instagram: values.instagram.trim() || undefined,
-            email: values.email.trim() || undefined,
-            cpf: values.cpf.trim() || undefined,
-            origin: values.origin,
-            interests: values.interests,
-            tags,
-            owner_id: values.ownerId || contact.ownerId,
-            address,
-          });
-          await refreshCrmData();
-          toast.success(`Alterações de ${values.name.trim()} salvas.`);
-        } else {
-          const created = await api.createContact({
-            name: values.name.trim(),
-            whatsapp: values.whatsapp.trim(),
-            instagram: values.instagram.trim() || undefined,
-            email: values.email.trim() || undefined,
-            cpf: values.cpf.trim() || undefined,
-            origin: values.origin,
-            interests: values.interests,
-            tags,
-            owner_id: values.ownerId || state.session.userId,
-            address,
-          });
-          await refreshCrmData();
-          toast.success(`Cliente ${created.name} criado.`);
-        }
-        handleOpenChange(false);
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao salvar cliente.");
+    try {
+      if (isEdit && contact) {
+        await api.updateContact(contact.id, {
+          name: values.name.trim(),
+          whatsapp: values.whatsapp.trim(),
+          instagram: values.instagram.trim() || undefined,
+          email: values.email.trim() || undefined,
+          cpf: values.cpf.trim() || undefined,
+          origin: values.origin,
+          interests: values.interests,
+          tags,
+          owner_id: values.ownerId || contact.ownerId,
+          address,
+        });
+        await refreshCrmData();
+        toast.success(`Alterações de ${values.name.trim()} salvas.`);
+      } else {
+        const created = await api.createContact({
+          name: values.name.trim(),
+          whatsapp: values.whatsapp.trim(),
+          instagram: values.instagram.trim() || undefined,
+          email: values.email.trim() || undefined,
+          cpf: values.cpf.trim() || undefined,
+          origin: values.origin,
+          interests: values.interests,
+          tags,
+          owner_id: values.ownerId || state.session.userId,
+          address,
+        });
+        await refreshCrmData();
+        toast.success(`Cliente ${created.name} criado.`);
       }
-      return;
+      handleOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao salvar cliente.");
     }
-
-    if (isEdit && contact) {
-      const updated: Contact = {
-        ...contact,
-        name: values.name.trim(),
-        whatsapp: values.whatsapp.trim(),
-        instagram: values.instagram.trim() || undefined,
-        email: values.email.trim() || undefined,
-        cpf: values.cpf.trim() || undefined,
-        origin: values.origin,
-        interests: values.interests,
-        tags,
-        ownerId: values.ownerId || contact.ownerId,
-        address: hasAddress
-          ? {
-              street: values.street.trim(),
-              city: values.city.trim(),
-              state: values.state.trim(),
-              zip: values.zip.trim(),
-            }
-          : undefined,
-      };
-      dispatch({ type: "UPDATE_CONTACT", contact: updated });
-      toast.success(`Alterações de ${updated.name} salvas.`);
-    } else {
-      const created: Contact = {
-        id: newId("contact"),
-        tenantId: state.session.tenantId,
-        name: values.name.trim(),
-        whatsapp: values.whatsapp.trim(),
-        instagram: values.instagram.trim() || undefined,
-        email: values.email.trim() || undefined,
-        cpf: values.cpf.trim() || undefined,
-        origin: values.origin,
-        interests: values.interests,
-        tags,
-        journeyStatus: "lead",
-        ownerId: values.ownerId || state.session.userId,
-        firstContactAt: now,
-        lastInteractionAt: now,
-        createdAt: now,
-        address: hasAddress
-          ? {
-              street: values.street.trim(),
-              city: values.city.trim(),
-              state: values.state.trim(),
-              zip: values.zip.trim(),
-            }
-          : undefined,
-      };
-      dispatch({ type: "ADD_CONTACT", contact: created });
-      toast.success(`Cliente ${created.name} criado.`);
-    }
-
-    handleOpenChange(false);
   }
 
   return (

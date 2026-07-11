@@ -1,22 +1,34 @@
 // Cliente HTTP fino pro backend FastAPI — usado pelas features já migradas
-// pra lá (WhatsApp/Evolution API, contatos/negócios/atividades/agendamentos).
-// Anexos (comprovantes) ainda ficam só no reducer local/localStorage — o
-// backend já tem um endpoint de upload real (Supabase Storage), mas migrar a
-// AttachmentsTab pra ele é um passo à parte, ainda não feito. Anexa o token
-// de sessão do Supabase como Bearer — o backend valida esse mesmo token via
-// sb.auth.get_user().
+// pra lá (WhatsApp/Evolution API, contatos/negócios/atividades/agendamentos/
+// anexos/usuários/dashboard). Anexa o token de sessão do Supabase como
+// Bearer — o backend valida esse mesmo token via sb.auth.get_user().
 
 import { supabase } from "./supabaseClient";
-import type { Activity, Appointment, Contact, Deal } from "./types";
+import type { Activity, Appointment, Attachment, BillingStatus, Contact, Deal, LossReason, Role, Tenant, User } from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export class ApiError extends Error {}
 
+// Tenant que o admin_saas está "vestindo" via Entrar como gestor — setado
+// por store.tsx sempre que a sessão reflete uma impersonação ativa. Vai em
+// toda requisição autenticada como header X-Impersonate-Tenant; o backend
+// só aceita esse header vindo de um token com role admin_saas de verdade
+// (ver app/deps.py), então um valor stale aqui nunca vaza acesso indevido.
+let impersonatedTenantId: string | null = null;
+
+export function setImpersonatedTenantId(tenantId: string | null): void {
+  impersonatedTenantId = tenantId;
+}
+
 async function authHeaders(): Promise<HeadersInit> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  if (impersonatedTenantId) {
+    headers["X-Impersonate-Tenant"] = impersonatedTenantId;
+  }
+  return headers;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -28,6 +40,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(body?.error?.message ?? `Erro ${response.status} ao chamar a API.`);
   }
   if (response.status === 204) return undefined as T;
+  return response.json();
+}
+
+// Sem "Content-Type": o browser define o boundary do multipart sozinho a
+// partir do FormData — sobrescrever isso quebra o parse no FastAPI.
+async function requestMultipart<T>(path: string, formData: FormData): Promise<T> {
+  const headers = await authHeaders();
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, body: formData });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(body?.error?.message ?? `Erro ${response.status} ao chamar a API.`);
+  }
   return response.json();
 }
 
@@ -116,8 +141,7 @@ export interface ApiAppointment {
 }
 
 // Mapeiam o DTO snake_case do backend pro tipo camelCase que o resto do app já
-// consome (via tenantScope/seed) — assim os ~20 componentes que só leem essas
-// coleções não precisam saber se o dado veio do backend ou do reducer local.
+// consome via tenantScope/selectors.
 
 export function mapContact(api: ApiContact): Contact {
   return {
@@ -247,6 +271,206 @@ export interface AppointmentPayload {
   note?: string;
 }
 
+export interface ApiUser {
+  id: string;
+  tenant_id: string | null;
+  role: string;
+  name: string;
+  email: string;
+  avatar_color: string;
+  avatar_url: string | null;
+  is_active: boolean;
+  notifications_last_seen_at: string | null;
+}
+
+export function mapUser(api: ApiUser): User {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    name: api.name,
+    email: api.email,
+    role: api.role as Role,
+    avatarColor: api.avatar_color,
+    avatarUrl: api.avatar_url ?? undefined,
+    notificationsLastSeenAt: api.notifications_last_seen_at ?? undefined,
+    // GET /users não expõe created_at (user_profiles não guarda; teria que
+    // vir de auth.users) — nenhuma tela usa User.createdAt pra membro de
+    // equipe hoje, então "agora" é honesto o suficiente pra satisfazer o tipo.
+    createdAt: new Date().toISOString(),
+    isActive: api.is_active,
+  };
+}
+
+export interface UserUpdatePayload {
+  name?: string;
+  email?: string;
+}
+
+export interface ApiAttachment {
+  id: string;
+  tenant_id: string;
+  contact_id: string;
+  deal_id: string | null;
+  file_name: string;
+  file_type: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  url: string;
+}
+
+export function mapAttachment(api: ApiAttachment): Attachment {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    contactId: api.contact_id,
+    dealId: api.deal_id ?? undefined,
+    fileName: api.file_name,
+    fileType: api.file_type,
+    // URL assinada do Supabase Storage (expira em alguns minutos), não um
+    // data: URI — o campo é reaproveitado só pra não duplicar o tipo local.
+    dataUrl: api.url,
+    uploadedBy: api.uploaded_by,
+    uploadedAt: api.uploaded_at,
+  };
+}
+
+export interface ApiMonthlyHistoryItem {
+  month: string;
+  month_key: string;
+  new_leads: number;
+  revenue: number;
+  net_profit: number;
+}
+
+export interface MonthlyHistoryItem {
+  month: string;
+  monthKey: string;
+  newLeads: number;
+  revenue: number;
+  netProfit: number;
+}
+
+export function mapMonthlyHistoryItem(api: ApiMonthlyHistoryItem): MonthlyHistoryItem {
+  return {
+    month: api.month,
+    monthKey: api.month_key,
+    newLeads: api.new_leads,
+    revenue: api.revenue,
+    netProfit: api.net_profit,
+  };
+}
+
+export interface ApiMonthlyDealDetail {
+  deal_id: string;
+  contact_id: string;
+  contact_name: string;
+  products: string;
+  value: number;
+  supplier_value: number;
+  gift_value: number;
+  freight_value: number;
+  net_profit: number;
+}
+
+export interface MonthlyDealDetail {
+  dealId: string;
+  contactId: string;
+  contactName: string;
+  products: string;
+  value: number;
+  supplierValue: number;
+  giftValue: number;
+  freightValue: number;
+  netProfit: number;
+}
+
+export function mapMonthlyDealDetail(api: ApiMonthlyDealDetail): MonthlyDealDetail {
+  return {
+    dealId: api.deal_id,
+    contactId: api.contact_id,
+    contactName: api.contact_name,
+    products: api.products,
+    value: api.value,
+    supplierValue: api.supplier_value,
+    giftValue: api.gift_value,
+    freightValue: api.freight_value,
+    netProfit: api.net_profit,
+  };
+}
+
+export interface ApiTenant {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  status: string;
+  settings: { tags: string[]; loss_reasons: string[]; business_hours: string };
+  created_at: string;
+  billing_status: string;
+  plan_expires_at: string | null;
+}
+
+export interface ImpersonateResponse {
+  tenant_id: string;
+  tenant_name: string;
+}
+
+export function mapTenant(api: ApiTenant): Tenant {
+  return {
+    id: api.id,
+    name: api.name,
+    slug: api.slug,
+    plan: api.plan as Tenant["plan"],
+    status: api.status as Tenant["status"],
+    createdAt: api.created_at,
+    billingStatus: api.billing_status as Tenant["billingStatus"],
+    planExpiresAt: api.plan_expires_at ?? undefined,
+    settings: {
+      tags: api.settings.tags,
+      lossReasons: api.settings.loss_reasons as LossReason[],
+      businessHours: api.settings.business_hours,
+    },
+  };
+}
+
+export interface ApiAdminUser {
+  id: string;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  role: string;
+  name: string;
+  email: string;
+  avatar_color: string;
+  avatar_url: string | null;
+  is_active: boolean;
+}
+
+export interface AdminUser {
+  id: string;
+  tenantId: string | null;
+  tenantName: string | null;
+  role: Role;
+  name: string;
+  email: string;
+  avatarColor: string;
+  avatarUrl?: string;
+  isActive: boolean;
+}
+
+export function mapAdminUser(api: ApiAdminUser): AdminUser {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    tenantName: api.tenant_name,
+    role: api.role as Role,
+    name: api.name,
+    email: api.email,
+    avatarColor: api.avatar_color,
+    avatarUrl: api.avatar_url ?? undefined,
+    isActive: api.is_active,
+  };
+}
+
 export const api = {
   listConnections: () => request<ApiConnection[]>("/api/v1/connections"),
   createConnection: (phone: string) =>
@@ -282,10 +506,62 @@ export const api = {
     request<ApiActivity[]>(`/api/v1/activities?contact_id=${encodeURIComponent(contactId)}`),
   createActivity: (body: ActivityPayload) =>
     request<ApiActivity>("/api/v1/activities", { method: "POST", body: JSON.stringify(body) }),
+  listRecentActivities: (limit = 20) => request<ApiActivity[]>(`/api/v1/activities/recent?limit=${limit}`),
+
+  listUsers: () => request<ApiUser[]>("/api/v1/users"),
+  updateUser: (id: string, body: UserUpdatePayload) =>
+    request<ApiUser>(`/api/v1/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  updateUserRole: (id: string, role: Role) =>
+    request<ApiUser>(`/api/v1/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+  updateUserStatus: (id: string, isActive: boolean) =>
+    request<ApiUser>(`/api/v1/users/${id}/status`, { method: "PATCH", body: JSON.stringify({ is_active: isActive }) }),
+  deleteUser: (id: string) => request<{ status: string }>(`/api/v1/users/${id}`, { method: "DELETE" }),
+  updateMe: (name: string) => request<ApiUser>("/api/v1/users/me", { method: "PATCH", body: JSON.stringify({ name }) }),
+  uploadAvatar: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestMultipart<ApiUser>("/api/v1/users/me/avatar", formData);
+  },
+  markNotificationsSeen: () => request<ApiUser>("/api/v1/users/me/notifications-seen", { method: "POST" }),
 
   listAppointments: () => request<ApiAppointment[]>("/api/v1/appointments"),
   createAppointment: (body: AppointmentPayload) =>
     request<ApiAppointment>("/api/v1/appointments", { method: "POST", body: JSON.stringify(body) }),
   updateAppointment: (id: string, body: Partial<AppointmentPayload & { status: string }>) =>
     request<ApiAppointment>(`/api/v1/appointments/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  getMonthlyHistory: (months = 12) =>
+    request<ApiMonthlyHistoryItem[]>(`/api/v1/dashboard/monthly-history?months=${months}`),
+  getMonthlyDetail: (year: number, month: number) =>
+    request<ApiMonthlyDealDetail[]>(`/api/v1/dashboard/monthly-history/${year}/${month}`),
+
+  listAttachments: (contactId: string) =>
+    request<ApiAttachment[]>(`/api/v1/contacts/${contactId}/attachments`),
+  uploadAttachment: (contactId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestMultipart<ApiAttachment>(`/api/v1/contacts/${contactId}/attachments`, formData);
+  },
+  deleteAttachment: (id: string) => request<{ status: string }>(`/api/v1/attachments/${id}`, { method: "DELETE" }),
+
+  listTenants: () => request<ApiTenant[]>("/api/v1/tenants"),
+  getTenant: (tenantId: string) => request<ApiTenant>(`/api/v1/tenants/${tenantId}`),
+  createTenant: (name: string, plan: string) =>
+    request<ApiTenant>("/api/v1/tenants", { method: "POST", body: JSON.stringify({ name, plan }) }),
+  updateTenant: (tenantId: string, body: { name?: string; plan?: string }) =>
+    request<ApiTenant>(`/api/v1/tenants/${tenantId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  updateTenantSettings: (
+    tenantId: string,
+    body: { tags?: string[]; loss_reasons?: string[]; business_hours?: string },
+  ) =>
+    request<ApiTenant>(`/api/v1/tenants/${tenantId}/settings`, { method: "PATCH", body: JSON.stringify(body) }),
+  updateTenantBilling: (tenantId: string, billingStatus: BillingStatus, planExpiresAt: string | null) =>
+    request<ApiTenant>(`/api/v1/tenants/${tenantId}/billing`, {
+      method: "PATCH",
+      body: JSON.stringify({ billing_status: billingStatus, plan_expires_at: planExpiresAt }),
+    }),
+  impersonateTenant: (tenantId: string) =>
+    request<ImpersonateResponse>(`/api/v1/tenants/${tenantId}/impersonate`, { method: "POST" }),
+
+  listAdminUsers: () => request<ApiAdminUser[]>("/api/v1/admin/users"),
 };

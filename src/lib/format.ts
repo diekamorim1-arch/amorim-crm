@@ -1,4 +1,4 @@
-// Helpers de formatação e datas relativas usados pela UI e pelo seed.
+// Helpers de formatação e datas relativas usados pela UI e pelos testes.
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;

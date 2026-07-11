@@ -15,8 +15,8 @@ import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/apiClient";
 import { STAGES } from "@/lib/constants";
 import { contactById, conversationWithContact, currentUser, dealsByStage, lostDeals, tenantScope } from "@/lib/selectors";
-import { crmReducer, newId, useCrm } from "@/lib/store";
-import type { Activity, Contact, Conversation, Deal, LossReason, Stage } from "@/lib/types";
+import { newId, useCrm } from "@/lib/store";
+import type { Conversation, Deal, LossReason, Stage } from "@/lib/types";
 
 const POS_VENDA_WINDOW_DAYS = 30;
 const POS_VENDA_WINDOW_MS = POS_VENDA_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -54,58 +54,31 @@ export function PipelinePage() {
     const deal = state.deals.find((d) => d.id === dealId);
     if (!deal || deal.stage === stage) return;
 
-    if (state.isRealSession) {
-      try {
-        await api.moveDeal(dealId, stage);
-        const fresh = await refreshCrmData();
-        if (stage === "pos_venda") {
-          const contact = fresh.contacts.find((c) => c.id === deal.contactId);
-          if (contact) {
-            const label = contact.journeyStatus === "recorrente" ? "recorrente" : "cliente";
-            toast.success(`Venda ganha! 🎉 ${contact.name} agora é ${label}.`);
-          }
+    try {
+      await api.moveDeal(dealId, stage);
+      const fresh = await refreshCrmData();
+      if (stage === "pos_venda") {
+        const contact = fresh.contacts.find((c) => c.id === deal.contactId);
+        if (contact) {
+          const label = contact.journeyStatus === "recorrente" ? "recorrente" : "cliente";
+          toast.success(`Venda ganha! 🎉 ${contact.name} agora é ${label}.`);
         }
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao mover negócio.");
       }
-      return;
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao mover negócio.");
     }
-
-    if (stage === "pos_venda") {
-      // Computa o estado resultante antes de despachar para poder ler o
-      // journeyStatus do contato "depois" da mudança, sem depender de um
-      // segundo render.
-      const next = crmReducer(state, { type: "MOVE_DEAL", dealId, stage });
-      dispatch({ type: "MOVE_DEAL", dealId, stage });
-
-      const contact = next.contacts.find((c) => c.id === deal.contactId);
-      if (contact) {
-        const label = contact.journeyStatus === "recorrente" ? "recorrente" : "cliente";
-        toast.success(`Venda ganha! 🎉 ${contact.name} agora é ${label}.`);
-      }
-      return;
-    }
-
-    dispatch({ type: "MOVE_DEAL", dealId, stage });
   }
 
   async function handleConfirmLost(reason: LossReason) {
     if (!lostDialogDeal) return;
 
-    if (state.isRealSession) {
-      try {
-        await api.markDealLost(lostDialogDeal.id, reason);
-        await refreshCrmData();
-        toast.success("Negócio marcado como perdido.");
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao marcar negócio como perdido.");
-      }
-      setLostDialogDeal(null);
-      return;
+    try {
+      await api.markDealLost(lostDialogDeal.id, reason);
+      await refreshCrmData();
+      toast.success("Negócio marcado como perdido.");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao marcar negócio como perdido.");
     }
-
-    dispatch({ type: "MARK_DEAL_LOST", dealId: lostDialogDeal.id, reason });
-    toast.success("Negócio marcado como perdido.");
     setLostDialogDeal(null);
   }
 
@@ -136,113 +109,54 @@ export function PipelinePage() {
 
   async function handleCreateLead(values: AddLeadFormValues) {
     if (!state.session) return;
-    const tenantId = state.session.tenantId;
-    const now = new Date().toISOString();
     const productLabel = values.supplierProductName ?? "Novo negócio";
 
-    if (state.isRealSession) {
-      try {
-        const contact = await api.createContact({
-          name: values.name,
-          whatsapp: values.whatsapp,
-          origin: values.origin,
-          interests: [],
-          tags: [],
-          owner_id: values.ownerId,
-        });
-        const deal = await api.createDeal({
-          contact_id: contact.id,
-          title: productLabel,
-          products: productLabel,
-          value: values.value,
-          payment: "pix",
-          trade_in: false,
-          owner_id: values.ownerId,
-        });
-        if (values.supplierProductId) {
-          try {
-            await api.updateDealFinancials(deal.id, {
-              supplier_product_id: values.supplierProductId,
-              supplier_value: values.supplierValue ?? 0,
-              gift_value: 0,
-              freight_value: 0,
-            });
-          } catch (financialsError) {
-            toast.error(
-              financialsError instanceof ApiError
-                ? `Lead criado, mas o custo do fornecedor não foi salvo: ${financialsError.message}`
-                : "Lead criado, mas o custo do fornecedor não foi salvo.",
-            );
-          }
+    try {
+      const contact = await api.createContact({
+        name: values.name,
+        whatsapp: values.whatsapp,
+        origin: values.origin,
+        interests: [],
+        tags: [],
+        owner_id: values.ownerId,
+      });
+      const deal = await api.createDeal({
+        contact_id: contact.id,
+        title: productLabel,
+        products: productLabel,
+        value: values.value,
+        payment: "pix",
+        trade_in: false,
+        owner_id: values.ownerId,
+      });
+      if (values.supplierProductId) {
+        try {
+          await api.updateDealFinancials(deal.id, {
+            supplier_product_id: values.supplierProductId,
+            supplier_value: values.supplierValue ?? 0,
+            gift_value: 0,
+            freight_value: 0,
+          });
+        } catch (financialsError) {
+          toast.error(
+            financialsError instanceof ApiError
+              ? `Lead criado, mas o custo do fornecedor não foi salvo: ${financialsError.message}`
+              : "Lead criado, mas o custo do fornecedor não foi salvo.",
+          );
         }
-        await api.createActivity({
-          contact_id: contact.id,
-          deal_id: deal.id,
-          type: "mudanca_estagio",
-          description: `Novo lead criado: ${productLabel}.`,
-        });
-        await refreshCrmData();
-        toast.success(`Lead ${contact.name} criado.`);
-        setAddOpen(false);
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao criar lead.");
       }
-      return;
+      await api.createActivity({
+        contact_id: contact.id,
+        deal_id: deal.id,
+        type: "mudanca_estagio",
+        description: `Novo lead criado: ${productLabel}.`,
+      });
+      await refreshCrmData();
+      toast.success(`Lead ${contact.name} criado.`);
+      setAddOpen(false);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao criar lead.");
     }
-
-    const contactId = newId("contact");
-    const dealId = newId("deal");
-
-    const contact: Contact = {
-      id: contactId,
-      tenantId,
-      name: values.name,
-      whatsapp: values.whatsapp,
-      origin: values.origin,
-      interests: [],
-      tags: [],
-      journeyStatus: "lead",
-      ownerId: values.ownerId,
-      firstContactAt: now,
-      lastInteractionAt: now,
-      createdAt: now,
-    };
-
-    const deal: Deal = {
-      id: dealId,
-      tenantId,
-      contactId,
-      title: productLabel,
-      products: productLabel,
-      value: values.value,
-      payment: "pix",
-      tradeIn: false,
-      stage: "novo_lead",
-      outcome: "aberto",
-      ownerId: values.ownerId,
-      stageChangedAt: now,
-      createdAt: now,
-      supplierProductId: values.supplierProductId,
-      supplierValue: values.supplierValue,
-    };
-
-    const activity: Activity = {
-      id: newId("activity"),
-      tenantId,
-      contactId,
-      dealId,
-      userId: values.ownerId,
-      type: "mudanca_estagio",
-      description: `Novo lead criado: ${productLabel}.`,
-      createdAt: now,
-    };
-
-    dispatch({ type: "ADD_CONTACT", contact });
-    dispatch({ type: "ADD_DEAL", deal });
-    dispatch({ type: "ADD_ACTIVITY", activity });
-
-    toast.success(`Lead ${contact.name} criado.`);
-    setAddOpen(false);
   }
 
   return (

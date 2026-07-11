@@ -13,6 +13,8 @@ export type AppointmentStatus = "agendado" | "concluido" | "cancelado";
 export type ConnectionStatus = "desconectado" | "pareando" | "conectado";
 export type ActivityType = "mensagem" | "mudanca_estagio" | "nota" | "agendamento" | "venda";
 
+export type BillingStatus = "em_dia" | "vencido" | "cancelado";
+
 export interface Tenant {
   id: string;
   name: string;
@@ -21,6 +23,8 @@ export interface Tenant {
   status: "ativo" | "suspenso";
   createdAt: string;
   settings: { tags: string[]; lossReasons: LossReason[]; businessHours: string };
+  billingStatus: BillingStatus;
+  planExpiresAt?: string;
 }
 
 export interface User {
@@ -30,7 +34,10 @@ export interface User {
   email: string;
   role: Role;
   avatarColor: string;
+  avatarUrl?: string;
   createdAt: string;
+  isActive: boolean;
+  notificationsLastSeenAt?: string;
 }
 
 export interface Contact {
@@ -185,6 +192,11 @@ export interface Session {
   userId: string;
   tenantId: string;
   role: Role;
+  /** Nome da loja impersonada (ENTER_TENANT_AS_GESTOR) — só usado pelo
+   * banner "Você está vendo X como Admin" do AppShell; state.tenants não é
+   * populado numa sessão real, então o nome vem direto da resposta de
+   * POST /tenants/{id}/impersonate em vez de um lookup em state.tenants. */
+  tenantName?: string;
 }
 
 export interface CrmState {
@@ -203,9 +215,4 @@ export interface CrmState {
   attachments: Attachment[];
   expenses: Expense[];
   session: Session | null;
-  /** true quando a sessão veio de um login real (Supabase Auth) — nesse caso
-   * contacts/deals/activities/appointments vêm do backend real, não do
-   * reducer local, e o AppShell/telas de mutação chamam a API em vez de
-   * despachar ações locais. Falso no modo demo (LOGIN/SWITCH_SESSION). */
-  isRealSession: boolean;
 }

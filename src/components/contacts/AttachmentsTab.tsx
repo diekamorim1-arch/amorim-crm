@@ -1,18 +1,20 @@
-// AttachmentsTab — aba "Comprovantes" da ficha do cliente: upload de
-// imagem/PDF convertido para base64 (persistido no localStorage via
-// ADD_ATTACHMENT) e lista dos anexos já enviados, com remoção. Sem seletor de
-// negócio: dealId fica sempre undefined neste momento (campo existe no tipo
-// para uso futuro).
+// AttachmentsTab — aba "Comprovantes" da ficha do cliente. Busca/envia/remove
+// os anexos via API (Supabase Storage, com URL assinada pra visualização).
+// Clicar numa miniatura abre o comprovante: imagem num lightbox inline, PDF
+// em nova aba. Sem seletor de negócio: dealId fica sempre undefined neste
+// momento (campo existe no tipo para uso futuro).
 
-import { useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { FileText, Paperclip, Trash2 } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { ApiError, api, mapAttachment } from "@/lib/apiClient";
 import { relativeTime } from "@/lib/format";
 import { tenantScope } from "@/lib/selectors";
-import { newId, useCrm } from "@/lib/store";
+import { useCrm } from "@/lib/store";
 import type { Attachment } from "@/lib/types";
 
 const MAX_FILE_BYTES = 1.5 * 1024 * 1024;
@@ -21,24 +23,27 @@ interface AttachmentsTabProps {
   contactId: string;
 }
 
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
 export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
-  const { state, dispatch } = useCrm();
-  const { attachments, users } = tenantScope(state);
+  const { state, dataVersion } = useCrm();
+  const { users } = tenantScope(state);
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
+  const [remoteAttachments, setRemoteAttachments] = useState<Attachment[]>([]);
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
 
-  const contactAttachments = attachments
-    .filter((a) => a.contactId === contactId)
-    .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+  useEffect(() => {
+    let active = true;
+    api.listAttachments(contactId).then((rows) => {
+      if (active) setRemoteAttachments(rows.map(mapAttachment));
+    });
+    return () => {
+      active = false;
+    };
+  }, [contactId, dataVersion]);
+
+  const contactAttachments = [...remoteAttachments].sort(
+    (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime(),
+  );
 
   function uploaderName(userId: string): string {
     return users.find((u) => u.id === userId)?.name ?? "—";
@@ -56,27 +61,30 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
     setError("");
 
     try {
-      const dataUrl = await readAsDataUrl(file);
-      const attachment: Attachment = {
-        id: newId("attachment"),
-        tenantId: state.session.tenantId,
-        contactId,
-        fileName: file.name,
-        fileType: file.type,
-        dataUrl,
-        uploadedBy: state.session.userId,
-        uploadedAt: new Date().toISOString(),
-      };
-      dispatch({ type: "ADD_ATTACHMENT", attachment });
+      const created = await api.uploadAttachment(contactId, file);
+      setRemoteAttachments((prev) => [mapAttachment(created), ...prev]);
       toast.success(`Comprovante ${file.name} anexado.`);
-    } catch {
-      setError("Não foi possível ler o arquivo. Tente novamente.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao enviar comprovante.");
     }
   }
 
-  function handleRemove(attachment: Attachment) {
-    dispatch({ type: "REMOVE_ATTACHMENT", attachmentId: attachment.id });
-    toast.success(`Comprovante ${attachment.fileName} removido.`);
+  async function handleRemove(attachment: Attachment) {
+    try {
+      await api.deleteAttachment(attachment.id);
+      setRemoteAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+      toast.success(`Comprovante ${attachment.fileName} removido.`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao remover comprovante.");
+    }
+  }
+
+  function handleOpen(attachment: Attachment) {
+    if (attachment.fileType.startsWith("image/")) {
+      setPreviewAttachment(attachment);
+    } else {
+      window.open(attachment.dataUrl, "_blank", "noopener,noreferrer");
+    }
   }
 
   return (
@@ -100,7 +108,11 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
               key={attachment.id}
               className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3"
             >
-              <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handleOpen(attachment)}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
                 {attachment.fileType.startsWith("image/") ? (
                   <img
                     src={attachment.dataUrl}
@@ -111,19 +123,35 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
                   <FileText className="size-10 shrink-0 text-muted-foreground" />
                 )}
                 <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-sm font-medium text-foreground">{attachment.fileName}</span>
+                  <span className="truncate text-sm font-medium text-foreground underline-offset-2 hover:underline">
+                    {attachment.fileName}
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     {relativeTime(attachment.uploadedAt)} · {uploaderName(attachment.uploadedBy)}
                   </span>
                 </div>
-              </div>
-              <Button variant="ghost" size="icon-xs" aria-label="Remover comprovante" onClick={() => handleRemove(attachment)}>
+              </button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Remover comprovante"
+                onClick={() => handleRemove(attachment)}
+              >
                 <Trash2 />
               </Button>
             </div>
           ))}
         </div>
       )}
+
+      <Dialog open={!!previewAttachment} onOpenChange={(open) => !open && setPreviewAttachment(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogTitle className="sr-only">{previewAttachment?.fileName}</DialogTitle>
+          {previewAttachment && (
+            <img src={previewAttachment.dataUrl} alt={previewAttachment.fileName} className="w-full rounded-lg" />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

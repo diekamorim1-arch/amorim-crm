@@ -4,35 +4,35 @@
 // (dashboardMetrics/tenantScope) e passa dados prontos para componentes de
 // gráfico "burros" (sem useCrm próprio), para ficarem fáceis de testar depois.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { CalendarX } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { ChannelTable } from "@/components/dashboard/ChannelTable";
-import { ClientProfitTable } from "@/components/dashboard/ClientProfitTable";
 import { CustomersWonSheet } from "@/components/dashboard/CustomersWonSheet";
 import { FunnelChart } from "@/components/dashboard/FunnelChart";
 import { LossRanking } from "@/components/dashboard/LossRanking";
 import { MetricCard } from "@/components/dashboard/MetricCard";
+import { MonthlyDetailSheet, type MonthlyDetailRow } from "@/components/dashboard/MonthlyDetailSheet";
 import { MonthlyHistoryTable } from "@/components/dashboard/MonthlyHistoryTable";
 import { NewLeadsSheet } from "@/components/dashboard/NewLeadsSheet";
+import { EditDealDialog } from "@/components/pipeline/EditDealDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatHourMinute, isSameDay } from "@/components/agenda/weekGridMath";
+import { api, mapMonthlyDealDetail, mapMonthlyHistoryItem, type MonthlyHistoryItem } from "@/lib/apiClient";
 import { APPOINTMENT_TYPE_LABELS, STAGE_LABELS } from "@/lib/constants";
 import { brl } from "@/lib/format";
 import {
   customersWonThisMonth,
   dashboardMetrics,
-  monthKeyOf,
-  monthlyHistory,
   newLeadsThisMonth,
   tenantScope,
-  wonDealsForMonth,
 } from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
+import type { Deal } from "@/lib/types";
 
 /** Delta percentual assinado vs. o período anterior; sem base (mês anterior
  * zerado) não mostra variação inventada — só o valor absoluto. */
@@ -43,12 +43,38 @@ function computeDelta(current: number, previous: number): { pct: number; label: 
 }
 
 export function DashboardPage() {
-  const { state } = useCrm();
+  const { state, dataVersion } = useCrm();
   const navigate = useNavigate();
 
   const [newLeadsOpen, setNewLeadsOpen] = useState(false);
   const [customersWonOpen, setCustomersWonOpen] = useState(false);
-  const [profitMonth, setProfitMonth] = useState(() => monthKeyOf(new Date().toISOString()));
+  const [selectedMonth, setSelectedMonth] = useState<{ key: string; label: string } | null>(null);
+  const [editingDealId, setEditingDealId] = useState<string | null>(null);
+
+  const [remoteHistory, setRemoteHistory] = useState<MonthlyHistoryItem[]>([]);
+  const [remoteDetailRows, setRemoteDetailRows] = useState<MonthlyDetailRow[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    api.getMonthlyHistory().then((rows) => {
+      if (active) setRemoteHistory(rows.map(mapMonthlyHistoryItem));
+    });
+    return () => {
+      active = false;
+    };
+  }, [dataVersion]);
+
+  useEffect(() => {
+    if (!selectedMonth) return;
+    const [year, month] = selectedMonth.key.split("-").map(Number);
+    let active = true;
+    api.getMonthlyDetail(year, month).then((rows) => {
+      if (active) setRemoteDetailRows(rows.map(mapMonthlyDealDetail));
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedMonth, dataVersion]);
 
   const metrics = dashboardMetrics(state);
   const { conversations, appointments, contacts } = tenantScope(state);
@@ -64,9 +90,10 @@ export function DashboardPage() {
 
   const newLeads = newLeadsThisMonth(state);
   const customersWon = customersWonThisMonth(state);
-  const history = monthlyHistory(state);
-  const monthOptions = [...history].reverse().map((row) => ({ monthKey: row.monthKey, month: row.month }));
-  const profitRows = wonDealsForMonth(state, profitMonth);
+  const history = remoteHistory;
+  const detailRows: MonthlyDetailRow[] = remoteDetailRows;
+
+  const editingDeal: Deal | null = editingDealId ? (state.deals.find((d) => d.id === editingDealId) ?? null) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -193,26 +220,27 @@ export function DashboardPage() {
           <CardTitle className="font-display text-base font-semibold">Histórico mensal</CardTitle>
         </CardHeader>
         <CardContent>
-          <MonthlyHistoryTable data={history} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-display text-base font-semibold">Lucro líquido por cliente</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ClientProfitTable
-            rows={profitRows}
-            monthOptions={monthOptions}
-            selectedMonth={profitMonth}
-            onMonthChange={setProfitMonth}
+          <MonthlyHistoryTable
+            data={history}
+            onSelectMonth={(row) => setSelectedMonth({ key: row.monthKey, label: row.month })}
           />
         </CardContent>
       </Card>
 
       <NewLeadsSheet open={newLeadsOpen} onOpenChange={setNewLeadsOpen} contacts={newLeads} />
       <CustomersWonSheet open={customersWonOpen} onOpenChange={setCustomersWonOpen} rows={customersWon} />
+      <MonthlyDetailSheet
+        open={!!selectedMonth}
+        onOpenChange={(open) => !open && setSelectedMonth(null)}
+        month={selectedMonth?.label ?? ""}
+        rows={detailRows}
+        onEdit={setEditingDealId}
+      />
+      <EditDealDialog
+        deal={editingDeal}
+        open={!!editingDealId}
+        onOpenChange={(open) => !open && setEditingDealId(null)}
+      />
     </div>
   );
 }

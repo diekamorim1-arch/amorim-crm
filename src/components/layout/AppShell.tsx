@@ -1,18 +1,20 @@
 // Envolve todas as rotas autenticadas: aplica o guard de sessão/papel e monta
 // o layout (sidebar desktop + topbar + bottom-bar mobile).
 
-import { Navigate, Outlet, useLocation } from "react-router";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router";
 
 import { MobileBottomNav, Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/button";
+import { isImpersonating } from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
 
-const ATENDENTE_ALLOWED_BASES = ["/pipeline", "/inbox", "/clientes", "/agenda", "/whatsapp", "/fornecedores"];
+const ATENDENTE_ALLOWED_BASES = ["/pipeline", "/inbox", "/clientes", "/agenda", "/whatsapp", "/fornecedores", "/conta"];
 
 export function AppShell() {
   const { state, dispatch } = useCrm();
   const location = useLocation();
+  const navigate = useNavigate();
   const session = state.session;
 
   if (!session) {
@@ -20,42 +22,48 @@ export function AppShell() {
   }
 
   const path = location.pathname;
-
-  if (session.role === "admin_saas" && !session.tenantId) {
-    if (path !== "/admin") return <Navigate to="/admin" replace />;
-  } else if (session.role === "atendente") {
-    const allowed = ATENDENTE_ALLOWED_BASES.some((base) => path === base || path.startsWith(`${base}/`));
-    if (!allowed) return <Navigate to="/pipeline" replace />;
-  } else if (session.role === "gestor" && path === "/admin") {
-    return <Navigate to="/" replace />;
-  }
-
-  // Impersonação: ENTER_TENANT_AS_GESTOR troca `role` para "gestor" e seta o
-  // `tenantId` da loja visitada, mas mantém o `userId` original do admin_saas.
-  // Detectamos a impersonação comparando o papel da sessão com o papel real
-  // do usuário por trás dela — se divergem, é um admin_saas "vestindo" um
-  // gestor. "Voltar ao painel" só precisa de SWITCH_SESSION nesse mesmo
-  // userId: como o User original nunca mudou, a sessão volta a ser admin_saas
-  // sem tenant.
-  const realUser = state.users.find((u) => u.id === session.userId);
-  const isImpersonating = session.role === "gestor" && realUser?.role === "admin_saas";
-  const impersonatedTenant = isImpersonating
-    ? state.tenants.find((t) => t.id === session.tenantId)
-    : undefined;
+  const isAdminWithoutTenant = session.role === "admin_saas" && !session.tenantId;
+  const impersonating = isImpersonating(state);
 
   function handleExitImpersonation() {
-    dispatch({ type: "SWITCH_SESSION", userId: session!.userId });
+    dispatch({ type: "EXIT_IMPERSONATION" });
+    navigate("/admin");
+  }
+
+  if (session.role === "atendente") {
+    const allowed = ATENDENTE_ALLOWED_BASES.some((base) => path === base || path.startsWith(`${base}/`));
+    if (!allowed) return <Navigate to="/pipeline" replace />;
+  } else if (session.role === "gestor" && path.startsWith("/admin")) {
+    return <Navigate to="/" replace />;
   }
 
   return (
     <div className="flex min-h-svh flex-col">
-      {isImpersonating && (
+      {impersonating && (
+        // Barra informativa normal enquanto o admin está intencionalmente
+        // dentro de uma loja (Entrar como gestor) — diferente do banner de
+        // resincronização abaixo, que sinaliza uma perda de contexto. Os dois
+        // não aparecem juntos: impersonating implica session.tenantId
+        // presente, então isAdminWithoutTenant é sempre falso aqui.
         <div className="flex items-center justify-between gap-3 border-b border-primary/30 bg-primary/10 px-4 py-2 text-sm">
           <span className="text-foreground">
-            Você está vendo <span className="font-medium">{impersonatedTenant?.name ?? "a loja"}</span> como Admin.
+            Você está vendo <strong>{session.tenantName ?? "esta loja"}</strong> como Admin.
           </span>
           <Button type="button" variant="outline" size="sm" onClick={handleExitImpersonation}>
             Voltar ao painel
+          </Button>
+        </div>
+      )}
+      {isAdminWithoutTenant && !path.startsWith("/admin") && (
+        // Antes navegava sozinho pro /admin sempre que a sessão não tinha
+        // tenant — inclusive quando isso acontecia por engano no meio do
+        // trabalho (ver fix de SET_AUTH_SESSION em store.tsx). Agora só
+        // avisa e deixa a pessoa decidir; a tela por trás fica com os dados
+        // do tenant vazios (tenantScope já trata tenantId ausente assim).
+        <div className="flex items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
+          <span className="text-foreground">Sua sessão de loja foi resincronizada — voltar ao painel de lojas?</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => navigate("/admin")}>
+            Ir para Lojas
           </Button>
         </div>
       )}

@@ -28,8 +28,8 @@ import {
 } from "@/components/ui/select";
 import { PAYMENT_METHOD_LABELS, STAGES } from "@/lib/constants";
 import { contactById, tenantScope } from "@/lib/selectors";
-import { newId, useCrm } from "@/lib/store";
-import type { Activity, Deal, PaymentMethod, Stage } from "@/lib/types";
+import { useCrm } from "@/lib/store";
+import type { PaymentMethod, Stage } from "@/lib/types";
 
 interface QuickDealDialogProps {
   open: boolean;
@@ -38,7 +38,7 @@ interface QuickDealDialogProps {
 }
 
 export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDialogProps) {
-  const { state, dispatch, refreshCrmData } = useCrm();
+  const { state, refreshCrmData } = useCrm();
   const contact = contactById(state, contactId);
   const { suppliers, supplierProducts } = tenantScope(state);
 
@@ -81,88 +81,49 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
 
     const product = supplierProducts.find((p) => p.id === supplierProductId);
     const productLabel = product?.name ?? "Novo negócio";
-    const now = new Date().toISOString();
 
-    if (state.isRealSession) {
-      try {
-        const createdDeal = await api.createDeal({
-          contact_id: contact.id,
-          title: productLabel,
-          products: productLabel,
-          value: Number(value),
-          payment,
-          trade_in: false,
-          owner_id: contact.ownerId,
-        });
-        if (stage !== "novo_lead") {
-          await api.moveDeal(createdDeal.id, stage);
-        }
-        if (product) {
-          try {
-            await api.updateDealFinancials(createdDeal.id, {
-              supplier_product_id: product.id,
-              supplier_value: product.currentPrice,
-              gift_value: 0,
-              freight_value: 0,
-            });
-          } catch (financialsError) {
-            toast.error(
-              financialsError instanceof ApiError
-                ? `Negócio criado, mas o custo do fornecedor não foi salvo: ${financialsError.message}`
-                : "Negócio criado, mas o custo do fornecedor não foi salvo.",
-            );
-          }
-        }
-        await api.createActivity({
-          contact_id: contact.id,
-          deal_id: createdDeal.id,
-          type: "mudanca_estagio",
-          description: `Negócio criado pelo Inbox: ${productLabel}.`,
-        });
-        await refreshCrmData();
-        toast.success(`Negócio criado para ${contact.name}.`);
-        reset();
-        onOpenChange(false);
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao criar negócio.");
+    try {
+      const createdDeal = await api.createDeal({
+        contact_id: contact.id,
+        title: productLabel,
+        products: productLabel,
+        value: Number(value),
+        payment,
+        trade_in: false,
+        owner_id: contact.ownerId,
+      });
+      if (stage !== "novo_lead") {
+        await api.moveDeal(createdDeal.id, stage);
       }
-      return;
+      if (product) {
+        try {
+          await api.updateDealFinancials(createdDeal.id, {
+            supplier_product_id: product.id,
+            supplier_value: product.currentPrice,
+            gift_value: 0,
+            freight_value: 0,
+          });
+        } catch (financialsError) {
+          toast.error(
+            financialsError instanceof ApiError
+              ? `Negócio criado, mas o custo do fornecedor não foi salvo: ${financialsError.message}`
+              : "Negócio criado, mas o custo do fornecedor não foi salvo.",
+          );
+        }
+      }
+      await api.createActivity({
+        contact_id: contact.id,
+        deal_id: createdDeal.id,
+        type: "mudanca_estagio",
+        description: `Negócio criado pelo Inbox: ${productLabel}.`,
+      });
+      await refreshCrmData();
+      toast.success(`Negócio criado para ${contact.name}.`);
+      reset();
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao criar negócio.");
     }
-
-    const deal: Deal = {
-      id: newId("deal"),
-      tenantId: state.session.tenantId,
-      contactId: contact.id,
-      title: productLabel,
-      products: productLabel,
-      value: Number(value),
-      payment,
-      tradeIn: false,
-      stage,
-      outcome: "aberto",
-      ownerId: contact.ownerId,
-      stageChangedAt: now,
-      createdAt: now,
-      supplierProductId: product?.id,
-      supplierValue: product?.currentPrice,
-    };
-
-    const activity: Activity = {
-      id: newId("activity"),
-      tenantId: state.session.tenantId,
-      contactId: contact.id,
-      dealId: deal.id,
-      userId: state.session.userId,
-      type: "mudanca_estagio",
-      description: `Negócio criado pelo Inbox: ${productLabel}.`,
-      createdAt: now,
-    };
-
-    dispatch({ type: "ADD_DEAL", deal });
-    dispatch({ type: "ADD_ACTIVITY", activity });
-    toast.success(`Negócio criado para ${contact.name}.`);
-    reset();
-    onOpenChange(false);
   }
 
   return (

@@ -1,13 +1,15 @@
 // AdminTenantsPage — painel do admin_saas: visão de todas as lojas (tenants)
-// cadastradas na plataforma (não há escopo de tenant para este papel — lê
-// state.tenants/state.users diretamente, ao contrário das telas de gestor que
-// usam tenantScope). Resumo + tabela + ações de criar loja e entrar como
-// gestor (impersonação, ver AppShell).
+// cadastradas na plataforma. Busca as lojas de verdade via api.listTenants().
+// "Entrar como gestor" permite ao admin operar dentro de uma loja (Pipeline,
+// Clientes, Negócios, Fornecedores, Configurações) com permissão total de
+// gestor, sem precisar sair da própria conta — ver ENTER_TENANT_AS_GESTOR em
+// lib/store.tsx e o banner "Voltar ao painel" em AppShell.tsx.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
+import { AdminNav } from "@/components/admin/AdminNav";
 import { TenantFormDialog } from "@/components/admin/TenantFormDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,30 +22,49 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ApiError, api, mapTenant } from "@/lib/apiClient";
 import { PLAN_LABELS } from "@/lib/constants";
 import { relativeTime } from "@/lib/format";
 import { useCrm } from "@/lib/store";
 import type { Tenant } from "@/lib/types";
 
 export function AdminTenantsPage() {
-  const { state, dispatch } = useCrm();
+  const { dispatch, dataVersion } = useCrm();
   const navigate = useNavigate();
   const [formOpen, setFormOpen] = useState(false);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [enteringTenantId, setEnteringTenantId] = useState<string | null>(null);
 
-  const { tenants, users } = state;
+  function fetchRemoteTenants() {
+    return api.listTenants().then((rows) => setTenants(rows.map(mapTenant)));
+  }
+
+  async function handleEnterAsGestor(tenantId: string) {
+    setEnteringTenantId(tenantId);
+    try {
+      const response = await api.impersonateTenant(tenantId);
+      dispatch({ type: "ENTER_TENANT_AS_GESTOR", tenantId: response.tenant_id, tenantName: response.tenant_name });
+      navigate("/");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Não foi possível entrar na loja.");
+    } finally {
+      setEnteringTenantId(null);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    fetchRemoteTenants().catch(() => active && toast.error("Não foi possível carregar as lojas."));
+    return () => {
+      active = false;
+    };
+  }, [dataVersion]);
 
   const activeTenants = tenants.filter((t) => t.status === "ativo").length;
-  const totalUsers = users.filter((u) => u.tenantId).length;
   const planCounts = tenants.reduce<Record<Tenant["plan"], number>>(
     (acc, t) => ({ ...acc, [t.plan]: (acc[t.plan] ?? 0) + 1 }),
     { starter: 0, pro: 0 },
   );
-
-  function handleEnterAsGestor(tenantId: string, tenantName: string) {
-    dispatch({ type: "ENTER_TENANT_AS_GESTOR", tenantId });
-    toast.success(`Você entrou como gestor de ${tenantName}.`);
-    navigate("/");
-  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,8 +73,15 @@ export function AdminTenantsPage() {
           <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">Lojas</h1>
           <p className="text-sm text-muted-foreground">Todas as lojas cadastradas na plataforma.</p>
         </div>
-        <Button onClick={() => setFormOpen(true)}>Nova loja</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate("/conta")}>
+            Minha conta
+          </Button>
+          <Button onClick={() => setFormOpen(true)}>Nova loja</Button>
+        </div>
       </div>
+
+      <AdminNav />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="gap-3 py-5">
@@ -70,7 +98,7 @@ export function AdminTenantsPage() {
             <p className="text-sm text-muted-foreground">Usuários totais</p>
           </CardHeader>
           <CardContent className="px-5">
-            <p className="font-mono text-2xl font-semibold tabular-nums text-foreground">{totalUsers}</p>
+            <p className="font-mono text-2xl font-semibold tabular-nums text-foreground">—</p>
           </CardContent>
         </Card>
 
@@ -97,12 +125,11 @@ export function AdminTenantsPage() {
               <TableHead>Usuários</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Criada em</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
+              <TableHead className="w-1" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {tenants.map((tenant) => {
-              const userCount = users.filter((u) => u.tenantId === tenant.id).length;
               return (
                 <TableRow key={tenant.id}>
                   <TableCell>
@@ -116,21 +143,23 @@ export function AdminTenantsPage() {
                       {PLAN_LABELS[tenant.plan]}
                     </Badge>
                   </TableCell>
-                  <TableCell className="font-mono tabular-nums text-foreground">{userCount}</TableCell>
+                  <TableCell className="font-mono tabular-nums text-foreground">—</TableCell>
                   <TableCell>
                     <Badge variant={tenant.status === "ativo" ? "outline" : "destructive"}>
                       {tenant.status === "ativo" ? "Ativo" : "Suspenso"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{relativeTime(tenant.createdAt)}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => handleEnterAsGestor(tenant.id, tenant.name)}
+                      disabled={enteringTenantId === tenant.id}
+                      onClick={() => handleEnterAsGestor(tenant.id)}
+                      className="whitespace-nowrap"
                     >
-                      Entrar como gestor
+                      {enteringTenantId === tenant.id ? "Entrando…" : "Entrar como gestor"}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -140,7 +169,11 @@ export function AdminTenantsPage() {
         </Table>
       </div>
 
-      <TenantFormDialog open={formOpen} onOpenChange={setFormOpen} tenants={tenants} dispatch={dispatch} />
+      <TenantFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        onCreated={fetchRemoteTenants}
+      />
     </div>
   );
 }

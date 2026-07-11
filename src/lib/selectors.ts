@@ -74,9 +74,27 @@ export function tenantScope(state: CrmState): {
   };
 }
 
+/** Usuário efetivo da sessão atual. Enquanto um admin_saas está "vestindo" o
+ * papel de gestor de uma loja (Entrar como gestor), state.session.role vira
+ * "gestor" mas o registro em state.users continua sendo o perfil real do
+ * admin (role admin_saas) — o userId nunca muda durante a impersonação.
+ * Sem sobrescrever role aqui, toda tela que faz `currentUser(state)?.role
+ * === "gestor"` pra liberar edição (Pipeline, Fornecedores, ficha do
+ * cliente...) ficaria bloqueada pro admin dentro da loja. */
 export function currentUser(state: CrmState): User | null {
   if (!state.session) return null;
-  return state.users.find((u) => u.id === state.session!.userId) ?? null;
+  const user = state.users.find((u) => u.id === state.session!.userId);
+  if (!user) return null;
+  return user.role === state.session.role ? user : { ...user, role: state.session.role };
+}
+
+/** true quando a sessão atual é um admin_saas "vestindo" o papel de gestor
+ * de uma loja via Entrar como gestor — detectado comparando o role real do
+ * perfil (state.users, nunca sobrescrito) com o role efetivo da sessão. */
+export function isImpersonating(state: CrmState): boolean {
+  if (!state.session) return false;
+  const realUser = state.users.find((u) => u.id === state.session!.userId);
+  return realUser?.role === "admin_saas" && state.session.role === "gestor";
 }
 
 /** Deals ativos (outcome !== "perdido") do tenant atual, agrupados por estágio. */

@@ -1,7 +1,10 @@
 import { Navigate, Route, Routes } from "react-router";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { AccountPage } from "@/pages/AccountPage";
+import { AdminPlansPage } from "@/pages/AdminPlansPage";
 import { AdminTenantsPage } from "@/pages/AdminTenantsPage";
+import { AdminUsersPage } from "@/pages/AdminUsersPage";
 import { AgendaPage } from "@/pages/AgendaPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { ContactsPage } from "@/pages/ContactsPage";
@@ -38,8 +41,11 @@ function App() {
         <Route path="/fornecedores/:supplierId" element={<SupplierDetailPage />} />
         <Route path="/gastos" element={<GastosPage />} />
         <Route path="/config" element={<SettingsPage />} />
+        <Route path="/conta" element={<AccountPage />} />
         <Route path="/whatsapp" element={<WhatsAppPage />} />
         <Route path="/admin" element={<AdminTenantsPage />} />
+        <Route path="/admin/usuarios" element={<AdminUsersPage />} />
+        <Route path="/admin/planos" element={<AdminPlansPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

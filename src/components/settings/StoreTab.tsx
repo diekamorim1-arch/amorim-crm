@@ -1,6 +1,7 @@
 // StoreTab — dados básicos da loja (tenant): nome, horário e plano. Slug é
 // somente leitura (identidade fixa da loja, definida na criação do tenant).
-// Salvar despacha UPDATE_TENANT preservando tags/motivos de perda já configurados.
+// Salvar chama api.updateTenant (nome) + api.updateTenantSettings (horário)
+// de verdade e repassa a resposta via onTenantUpdated.
 
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -9,35 +10,38 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ApiError, api, mapTenant } from "@/lib/apiClient";
 import { PLAN_LABELS } from "@/lib/constants";
-import type { CrmAction, Dispatch } from "@/lib/store";
 import type { Tenant } from "@/lib/types";
 
 interface StoreTabProps {
   tenant: Tenant;
-  dispatch: Dispatch<CrmAction>;
+  onTenantUpdated: (tenant: Tenant) => void;
 }
 
-export function StoreTab({ tenant, dispatch }: StoreTabProps) {
+export function StoreTab({ tenant, onTenantUpdated }: StoreTabProps) {
   const [name, setName] = useState(tenant.name);
   const [businessHours, setBusinessHours] = useState(tenant.settings.businessHours);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setName(tenant.name);
     setBusinessHours(tenant.settings.businessHours);
   }, [tenant.id]);
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    dispatch({
-      type: "UPDATE_TENANT",
-      tenant: {
-        ...tenant,
-        name: name.trim() || tenant.name,
-        settings: { ...tenant.settings, businessHours: businessHours.trim() },
-      },
-    });
-    toast.success("Alterações salvas.");
+    setSaving(true);
+    try {
+      await api.updateTenant(tenant.id, { name: name.trim() || tenant.name });
+      const updatedRow = await api.updateTenantSettings(tenant.id, { business_hours: businessHours.trim() });
+      onTenantUpdated(mapTenant(updatedRow));
+      toast.success("Alterações salvas.");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao salvar alterações da loja.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -76,7 +80,9 @@ export function StoreTab({ tenant, dispatch }: StoreTabProps) {
       </div>
 
       <div>
-        <Button type="submit">Salvar alterações</Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? "Salvando…" : "Salvar alterações"}
+        </Button>
       </div>
     </form>
   );

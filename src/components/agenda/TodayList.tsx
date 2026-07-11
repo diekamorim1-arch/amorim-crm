@@ -1,7 +1,7 @@
 // TodayList — lista vertical dos agendamentos de hoje, ordenada por hora,
 // com tipo, cliente (link p/ ficha), negócio vinculado, responsável e ações
-// de concluir/cancelar (via UPDATE_APPOINTMENT). Usada tanto na visão "Hoje"
-// da Agenda quanto poderia ser reaproveitada em outros contextos futuros.
+// de concluir/cancelar. Usada tanto na visão "Hoje" da Agenda quanto poderia
+// ser reaproveitada em outros contextos futuros.
 
 import type { MouseEvent } from "react";
 import { Link } from "react-router";
@@ -28,7 +28,7 @@ interface TodayListProps {
 }
 
 export function TodayList({ appointments, contacts, deals, users, onSelectAppointment }: TodayListProps) {
-  const { state, dispatch, refreshCrmData } = useCrm();
+  const { refreshCrmData } = useCrm();
 
   const sorted = [...appointments].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
@@ -37,19 +37,13 @@ export function TodayList({ appointments, contacts, deals, users, onSelectAppoin
   async function updateStatus(appt: Appointment, status: "concluido" | "cancelado", event: MouseEvent) {
     event.stopPropagation();
 
-    if (state.isRealSession) {
-      try {
-        await api.updateAppointment(appt.id, { status });
-        await refreshCrmData();
-        toast.success(status === "concluido" ? "Agendamento concluído." : "Agendamento cancelado.");
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar agendamento.");
-      }
-      return;
+    try {
+      await api.updateAppointment(appt.id, { status });
+      await refreshCrmData();
+      toast.success(status === "concluido" ? "Agendamento concluído." : "Agendamento cancelado.");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar agendamento.");
     }
-
-    dispatch({ type: "UPDATE_APPOINTMENT", appointment: { ...appt, status } });
-    toast.success(status === "concluido" ? "Agendamento concluído." : "Agendamento cancelado.");
   }
 
   if (sorted.length === 0) {
