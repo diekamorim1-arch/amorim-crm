@@ -152,6 +152,20 @@ describe("crmReducer — UPDATE_DEAL", () => {
   });
 });
 
+describe("crmReducer — REMOVE_DEAL", () => {
+  it("remove só o deal informado, sem tocar em outros deals nem no contato", () => {
+    const state = baseState();
+    const secondDeal: Deal = { ...state.deals[0], id: "deal_2" };
+    const withSecond = { ...state, deals: [...state.deals, secondDeal] };
+
+    const next = crmReducer(withSecond, { type: "REMOVE_DEAL", dealId: "deal_1" });
+
+    expect(next.deals.find((d) => d.id === "deal_1")).toBeUndefined();
+    expect(next.deals.find((d) => d.id === "deal_2")).toEqual(secondDeal);
+    expect(next.contacts).toEqual(state.contacts);
+  });
+});
+
 describe("crmReducer — MARK_DEAL_LOST", () => {
   it("exige reason, marca outcome perdido e o deal some do board mas aparece em lostDeals", () => {
     const state = baseState();
@@ -413,6 +427,21 @@ describe("crmReducer — gastos", () => {
     const withExpense = { ...base, expenses: [expense] };
     const next = crmReducer(withExpense, { type: "REMOVE_EXPENSE", expenseId: expense.id });
     expect(next.expenses).toHaveLength(0);
+  });
+
+  it("SET_EXPENSES substitui a lista inteira, sem acumular em remontagens repetidas", () => {
+    const base = baseState();
+    const stale: Expense = {
+      id: "expense_stale", tenantId: base.tenants[0].id, description: "Gasto antigo",
+      value: 50, userId: base.users[0].id, createdAt: new Date().toISOString(),
+    };
+    const fresh: Expense = {
+      id: "expense_fresh", tenantId: base.tenants[0].id, description: "Gasto atual",
+      value: 80, userId: base.users[0].id, createdAt: new Date().toISOString(),
+    };
+    const withStale = { ...base, expenses: [stale] };
+    const next = crmReducer(withStale, { type: "SET_EXPENSES", expenses: [fresh] });
+    expect(next.expenses).toEqual([fresh]);
   });
 });
 
@@ -719,10 +748,14 @@ describe("dashboardMetrics", () => {
 });
 
 describe("crmReducer — SET_REMOTE_DATA e LOGOUT", () => {
-  it("SET_REMOTE_DATA substitui contacts/deals/appointments preservando o resto do state", () => {
+  it("SET_REMOTE_DATA substitui contacts/deals/appointments/suppliers preservando o resto do state", () => {
     const base = baseState();
     const newContact: Contact = { ...base.contacts[0], id: "contact_remote", name: "Cliente Remoto" };
     const newDeal: Deal = { ...base.deals[0], id: "deal_remote", contactId: newContact.id };
+    const newSupplier: Supplier = {
+      id: "supplier_remote", tenantId: base.tenants[0].id, name: "Fornecedor Remoto",
+      whatsapp: "+5511900000099", createdAt: new Date().toISOString(),
+    };
 
     const next = crmReducer(base, {
       type: "SET_REMOTE_DATA",
@@ -730,11 +763,14 @@ describe("crmReducer — SET_REMOTE_DATA e LOGOUT", () => {
       deals: [newDeal],
       appointments: [],
       users: [],
+      suppliers: [newSupplier],
+      supplierProducts: [],
     });
 
     expect(next.contacts).toEqual([newContact]);
     expect(next.deals).toEqual([newDeal]);
     expect(next.appointments).toEqual([]);
+    expect(next.suppliers).toEqual([newSupplier]);
     expect(next.tenants).toBe(base.tenants);
     expect(next.session).toBe(base.session);
   });
@@ -751,6 +787,8 @@ describe("crmReducer — SET_REMOTE_DATA e LOGOUT", () => {
       deals: [],
       appointments: [],
       users: [freshUser],
+      suppliers: [],
+      supplierProducts: [],
     });
 
     expect(next.users).toContainEqual(freshUser);

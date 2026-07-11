@@ -1,7 +1,7 @@
-// SupplierFormDialog — dialog único para criar e editar fornecedores. Em modo
-// de criação (supplier === undefined) despacha ADD_SUPPLIER; em modo de
-// edição despacha UPDATE_SUPPLIER preservando o id/tenantId/createdAt
-// originais. Segue o mesmo padrão dual-mode do ContactFormDialog.
+// SupplierFormDialog — dialog único para criar e editar fornecedores via API
+// real. Em modo de criação (supplier === undefined) despacha ADD_SUPPLIER
+// com a resposta do POST; em modo de edição despacha UPDATE_SUPPLIER com a
+// resposta do PATCH. Segue o mesmo padrão dual-mode do ContactFormDialog.
 
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -18,7 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { newId, useCrm } from "@/lib/store";
+import { ApiError, api, mapSupplier } from "@/lib/apiClient";
+import { useCrm } from "@/lib/store";
 import type { Supplier } from "@/lib/types";
 
 interface SupplierFormDialogProps {
@@ -48,10 +49,11 @@ function valuesFromSupplier(supplier: Supplier | undefined): FormValues {
 }
 
 export function SupplierFormDialog({ supplier, open, onOpenChange }: SupplierFormDialogProps) {
-  const { state, dispatch } = useCrm();
+  const { dispatch } = useCrm();
 
   const [values, setValues] = useState<FormValues>(() => valuesFromSupplier(supplier));
   const [errors, setErrors] = useState(EMPTY_ERRORS);
+  const [submitting, setSubmitting] = useState(false);
 
   const isEdit = !!supplier;
 
@@ -71,9 +73,8 @@ export function SupplierFormDialog({ supplier, open, onOpenChange }: SupplierFor
     onOpenChange(next);
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!state.session) return;
 
     const nextErrors = {
       name: values.name.trim() ? "" : "Informe o nome do fornecedor.",
@@ -82,33 +83,31 @@ export function SupplierFormDialog({ supplier, open, onOpenChange }: SupplierFor
     setErrors(nextErrors);
     if (nextErrors.name || nextErrors.whatsapp) return;
 
-    if (isEdit && supplier) {
-      const updated: Supplier = {
-        ...supplier,
-        name: values.name.trim(),
-        whatsapp: values.whatsapp.trim(),
-        contactName: values.contactName.trim() || undefined,
-        email: values.email.trim() || undefined,
-        notes: values.notes.trim() || undefined,
-      };
-      dispatch({ type: "UPDATE_SUPPLIER", supplier: updated });
-      toast.success(`Fornecedor ${updated.name} atualizado.`);
-    } else {
-      const created: Supplier = {
-        id: newId("supplier"),
-        tenantId: state.session.tenantId,
-        name: values.name.trim(),
-        whatsapp: values.whatsapp.trim(),
-        contactName: values.contactName.trim() || undefined,
-        email: values.email.trim() || undefined,
-        notes: values.notes.trim() || undefined,
-        createdAt: new Date().toISOString(),
-      };
-      dispatch({ type: "ADD_SUPPLIER", supplier: created });
-      toast.success(`Fornecedor ${created.name} criado.`);
-    }
+    const payload = {
+      name: values.name.trim(),
+      whatsapp: values.whatsapp.trim(),
+      contact_name: values.contactName.trim() || undefined,
+      email: values.email.trim() || undefined,
+      notes: values.notes.trim() || undefined,
+    };
 
-    handleOpenChange(false);
+    setSubmitting(true);
+    try {
+      if (isEdit && supplier) {
+        const updated = mapSupplier(await api.updateSupplier(supplier.id, payload));
+        dispatch({ type: "UPDATE_SUPPLIER", supplier: updated });
+        toast.success(`Fornecedor ${updated.name} atualizado.`);
+      } else {
+        const created = mapSupplier(await api.createSupplier(payload));
+        dispatch({ type: "ADD_SUPPLIER", supplier: created });
+        toast.success(`Fornecedor ${created.name} criado.`);
+      }
+      handleOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao salvar fornecedor.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -185,7 +184,9 @@ export function SupplierFormDialog({ supplier, open, onOpenChange }: SupplierFor
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit">{isEdit ? "Salvar alterações" : "Criar fornecedor"}</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Salvando…" : isEdit ? "Salvar alterações" : "Criar fornecedor"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

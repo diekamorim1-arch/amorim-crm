@@ -4,7 +4,22 @@
 // Bearer — o backend valida esse mesmo token via sb.auth.get_user().
 
 import { supabase } from "./supabaseClient";
-import type { Activity, Appointment, Attachment, BillingStatus, Contact, Deal, LossReason, Role, Tenant, User } from "./types";
+import type {
+  Activity,
+  Appointment,
+  Attachment,
+  BillingStatus,
+  Contact,
+  Deal,
+  Expense,
+  LossReason,
+  Role,
+  Supplier,
+  SupplierPriceChange,
+  SupplierProduct,
+  Tenant,
+  User,
+} from "./types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -220,6 +235,92 @@ export function mapAppointment(api: ApiAppointment): Appointment {
     ownerId: api.owner_id,
     note: api.note ?? undefined,
     createdAt: api.starts_at,
+  };
+}
+
+export interface ApiSupplier {
+  id: string;
+  tenant_id: string;
+  name: string;
+  whatsapp: string;
+  contact_name: string | null;
+  email: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface ApiSupplierProduct {
+  id: string;
+  tenant_id: string;
+  supplier_id: string;
+  name: string;
+  current_price: number;
+  updated_at: string;
+}
+
+export interface ApiPriceChange {
+  id: string;
+  tenant_id: string;
+  supplier_product_id: string;
+  price: number;
+  changed_at: string;
+}
+
+export function mapSupplier(api: ApiSupplier): Supplier {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    name: api.name,
+    whatsapp: api.whatsapp,
+    contactName: api.contact_name ?? undefined,
+    email: api.email ?? undefined,
+    notes: api.notes ?? undefined,
+    createdAt: api.created_at,
+  };
+}
+
+export function mapSupplierProduct(api: ApiSupplierProduct): SupplierProduct {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    supplierId: api.supplier_id,
+    name: api.name,
+    currentPrice: api.current_price,
+    updatedAt: api.updated_at,
+    // SupplierProductOut não expõe created_at (a tabela não guarda essa
+    // coluna separada de updated_at) — mesmo padrão de mapContact/mapDeal
+    // pra campos honestos o suficiente sem inventar uma data fictícia.
+    createdAt: api.updated_at,
+  };
+}
+
+export function mapPriceChange(api: ApiPriceChange): SupplierPriceChange {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    supplierProductId: api.supplier_product_id,
+    price: api.price,
+    changedAt: api.changed_at,
+  };
+}
+
+export interface ApiExpense {
+  id: string;
+  tenant_id: string;
+  description: string;
+  value: number;
+  user_id: string;
+  created_at: string;
+}
+
+export function mapExpense(api: ApiExpense): Expense {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    description: api.description,
+    value: api.value,
+    userId: api.user_id,
+    createdAt: api.created_at,
   };
 }
 
@@ -496,12 +597,44 @@ export const api = {
   createDeal: (body: DealPayload) => request<ApiDeal>("/api/v1/deals", { method: "POST", body: JSON.stringify(body) }),
   updateDeal: (id: string, body: Partial<{ title: string; products: string; value: number; payment: string }>) =>
     request<ApiDeal>(`/api/v1/deals/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteDeal: (id: string) => request<void>(`/api/v1/deals/${id}`, { method: "DELETE" }),
   moveDeal: (id: string, stage: string) =>
     request<ApiDeal>(`/api/v1/deals/${id}/move`, { method: "POST", body: JSON.stringify({ stage }) }),
   markDealLost: (id: string, reason: string) =>
     request<ApiDeal>(`/api/v1/deals/${id}/mark-lost`, { method: "POST", body: JSON.stringify({ reason }) }),
   updateDealFinancials: (id: string, body: DealFinancialsPayload) =>
     request<ApiDeal>(`/api/v1/deals/${id}/financials`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  listSuppliers: (search?: string) =>
+    request<ApiSupplier[]>(`/api/v1/suppliers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  getSupplier: (id: string) => request<ApiSupplier>(`/api/v1/suppliers/${id}`),
+  createSupplier: (body: {
+    name: string;
+    whatsapp: string;
+    contact_name?: string;
+    email?: string;
+    notes?: string;
+  }) => request<ApiSupplier>("/api/v1/suppliers", { method: "POST", body: JSON.stringify(body) }),
+  updateSupplier: (
+    id: string,
+    body: Partial<{ name: string; whatsapp: string; contact_name: string; email: string; notes: string }>,
+  ) => request<ApiSupplier>(`/api/v1/suppliers/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  listSupplierProducts: (supplierId: string) =>
+    request<ApiSupplierProduct[]>(`/api/v1/suppliers/${supplierId}/products`),
+  createSupplierProduct: (supplierId: string, body: { name: string; current_price: number }) =>
+    request<ApiSupplierProduct>(`/api/v1/suppliers/${supplierId}/products`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateSupplierProduct: (id: string, body: Partial<{ name: string; current_price: number }>) =>
+    request<ApiSupplierProduct>(`/api/v1/supplier-products/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  updateSupplierProductPrice: (id: string, price: number) =>
+    request<ApiSupplierProduct>(`/api/v1/supplier-products/${id}/price`, {
+      method: "PATCH",
+      body: JSON.stringify({ price }),
+    }),
+  getPriceHistory: (productId: string) =>
+    request<ApiPriceChange[]>(`/api/v1/supplier-products/${productId}/price-history`),
 
   listActivities: (contactId: string) =>
     request<ApiActivity[]>(`/api/v1/activities?contact_id=${encodeURIComponent(contactId)}`),
@@ -530,6 +663,11 @@ export const api = {
     request<ApiAppointment>("/api/v1/appointments", { method: "POST", body: JSON.stringify(body) }),
   updateAppointment: (id: string, body: Partial<AppointmentPayload & { status: string }>) =>
     request<ApiAppointment>(`/api/v1/appointments/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  listExpenses: () => request<ApiExpense[]>("/api/v1/expenses"),
+  createExpense: (description: string, value: number) =>
+    request<ApiExpense>("/api/v1/expenses", { method: "POST", body: JSON.stringify({ description, value }) }),
+  deleteExpense: (id: string) => request<void>(`/api/v1/expenses/${id}`, { method: "DELETE" }),
 
   getMonthlyHistory: (months = 12) =>
     request<ApiMonthlyHistoryItem[]>(`/api/v1/dashboard/monthly-history?months=${months}`),
@@ -563,6 +701,7 @@ export const api = {
     }),
   impersonateTenant: (tenantId: string) =>
     request<ImpersonateResponse>(`/api/v1/tenants/${tenantId}/impersonate`, { method: "POST" }),
+  deleteTenant: (tenantId: string) => request<void>(`/api/v1/tenants/${tenantId}`, { method: "DELETE" }),
 
   listAdminUsers: () => request<ApiAdminUser[]>("/api/v1/admin/users"),
 };

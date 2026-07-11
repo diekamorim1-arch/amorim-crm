@@ -11,6 +11,16 @@ import { toast } from "sonner";
 
 import { AdminNav } from "@/components/admin/AdminNav";
 import { TenantFormDialog } from "@/components/admin/TenantFormDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -34,6 +44,8 @@ export function AdminTenantsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [enteringTenantId, setEnteringTenantId] = useState<string | null>(null);
+  const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function fetchRemoteTenants() {
     return api.listTenants().then((rows) => setTenants(rows.map(mapTenant)));
@@ -59,6 +71,23 @@ export function AdminTenantsPage() {
       active = false;
     };
   }, [dataVersion]);
+
+  async function handleConfirmDelete() {
+    const tenant = deletingTenant;
+    if (!tenant) return;
+
+    setDeleting(true);
+    try {
+      await api.deleteTenant(tenant.id);
+      setTenants((prev) => prev.filter((t) => t.id !== tenant.id));
+      toast.success(`Loja ${tenant.name} excluída.`);
+      setDeletingTenant(null);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao excluir loja.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const activeTenants = tenants.filter((t) => t.status === "ativo").length;
   const planCounts = tenants.reduce<Record<Tenant["plan"], number>>(
@@ -151,16 +180,27 @@ export function AdminTenantsPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">{relativeTime(tenant.createdAt)}</TableCell>
                   <TableCell>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={enteringTenantId === tenant.id}
-                      onClick={() => handleEnterAsGestor(tenant.id)}
-                      className="whitespace-nowrap"
-                    >
-                      {enteringTenantId === tenant.id ? "Entrando…" : "Entrar como gestor"}
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={enteringTenantId === tenant.id}
+                        onClick={() => handleEnterAsGestor(tenant.id)}
+                        className="whitespace-nowrap"
+                      >
+                        {enteringTenantId === tenant.id ? "Entrando…" : "Entrar como gestor"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeletingTenant(tenant)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        Excluir
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -174,6 +214,25 @@ export function AdminTenantsPage() {
         onOpenChange={setFormOpen}
         onCreated={fetchRemoteTenants}
       />
+
+      <AlertDialog open={!!deletingTenant} onOpenChange={(open) => !open && setDeletingTenant(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir {deletingTenant?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Essa ação não pode ser desfeita. Se esta loja tiver clientes, negócios, fornecedores, WhatsApp
+              conectado ou mais de um usuário, a exclusão será bloqueada — suspenda a loja nesse caso, em vez de
+              excluir.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? "Excluindo…" : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

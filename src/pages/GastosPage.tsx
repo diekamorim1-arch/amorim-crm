@@ -1,10 +1,10 @@
-// GastosPage — registro de despesas da loja (gestor). Gastos do mês corrente
-// são editáveis (adicionar/remover); meses anteriores aparecem como
-// somente-leitura, agrupados por mês só comparando datas (mesmo padrão de
-// isSameMonth já usado no Dashboard). Exportação de planilha é um CSV gerado
-// no próprio navegador, sob demanda, por mês.
+// GastosPage — registro de despesas da loja (gestor) via API real. Gastos do
+// mês corrente são editáveis (adicionar/remover); meses anteriores aparecem
+// como somente-leitura, agrupados por mês só comparando datas (mesmo padrão
+// de isSameMonth já usado no Dashboard). Exportação de planilha é um CSV
+// gerado no próprio navegador, sob demanda, por mês.
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Download, Plus, Receipt, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,9 +14,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ApiError, api, mapExpense } from "@/lib/apiClient";
 import { brl, monthLabel } from "@/lib/format";
 import { isSameMonth, monthKeyOf, tenantScope } from "@/lib/selectors";
-import { newId, useCrm } from "@/lib/store";
+import { useCrm } from "@/lib/store";
 import type { Expense } from "@/lib/types";
 
 function downloadExpensesCsv(label: string, expenses: Expense[], userName: (userId: string) => string) {
@@ -45,6 +46,19 @@ export function GastosPage() {
   const [description, setDescription] = useState("");
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .listExpenses()
+      .then((rows) => active && dispatch({ type: "SET_EXPENSES", expenses: rows.map(mapExpense) }))
+      .catch(() => active && toast.error("Não foi possível carregar os gastos."));
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const now = new Date();
   const currentMonthLabel = monthLabel(now);
@@ -78,9 +92,8 @@ export function GastosPage() {
     return users.find((u) => u.id === userId)?.name ?? "—";
   }
 
-  function handleAddExpense(event: FormEvent) {
+  async function handleAddExpense(event: FormEvent) {
     event.preventDefault();
-    if (!state.session) return;
 
     if (!description.trim()) {
       setError("Informe o que foi comprado.");
@@ -92,23 +105,28 @@ export function GastosPage() {
     }
     setError("");
 
-    const expense: Expense = {
-      id: newId("expense"),
-      tenantId: state.session.tenantId,
-      description: description.trim(),
-      value: Number(value),
-      userId: state.session.userId,
-      createdAt: new Date().toISOString(),
-    };
-    dispatch({ type: "ADD_EXPENSE", expense });
-    toast.success(`Gasto "${expense.description}" adicionado.`);
-    setDescription("");
-    setValue("");
+    setSubmitting(true);
+    try {
+      const created = mapExpense(await api.createExpense(description.trim(), Number(value)));
+      dispatch({ type: "ADD_EXPENSE", expense: created });
+      toast.success(`Gasto "${created.description}" adicionado.`);
+      setDescription("");
+      setValue("");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao adicionar gasto.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function handleRemove(expense: Expense) {
-    dispatch({ type: "REMOVE_EXPENSE", expenseId: expense.id });
-    toast.success("Gasto removido.");
+  async function handleRemove(expense: Expense) {
+    try {
+      await api.deleteExpense(expense.id);
+      dispatch({ type: "REMOVE_EXPENSE", expenseId: expense.id });
+      toast.success("Gasto removido.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao remover gasto.");
+    }
   }
 
   return (
@@ -148,9 +166,9 @@ export function GastosPage() {
                 aria-invalid={!!error}
               />
             </div>
-            <Button type="submit">
+            <Button type="submit" disabled={submitting}>
               <Plus />
-              Adicionar
+              {submitting ? "Adicionando…" : "Adicionar"}
             </Button>
           </form>
           {error && <p className="text-xs text-destructive">{error}</p>}

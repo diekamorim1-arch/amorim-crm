@@ -13,7 +13,16 @@ import { toast } from "sonner";
 import { newId } from "./id";
 import { isImpersonating } from "./selectors";
 import { supabase } from "./supabaseClient";
-import { api, mapAppointment, mapContact, mapDeal, mapUser, setImpersonatedTenantId } from "./apiClient";
+import {
+  api,
+  mapAppointment,
+  mapContact,
+  mapDeal,
+  mapSupplier,
+  mapSupplierProduct,
+  mapUser,
+  setImpersonatedTenantId,
+} from "./apiClient";
 import type {
   Activity,
   Appointment,
@@ -51,6 +60,7 @@ export type CrmAction =
   | { type: "UPDATE_CONTACT"; contact: Contact }
   | { type: "ADD_DEAL"; deal: Deal }
   | { type: "UPDATE_DEAL"; deal: Deal }
+  | { type: "REMOVE_DEAL"; dealId: string }
   | { type: "ADD_CONVERSATION"; conversation: Conversation }
   | { type: "SEND_MESSAGE"; conversationId: string; text: string; authorId: string }
   | { type: "RECEIVE_MESSAGE"; conversationId: string; text: string }
@@ -73,8 +83,17 @@ export type CrmAction =
   | { type: "REMOVE_ATTACHMENT"; attachmentId: string }
   | { type: "ADD_EXPENSE"; expense: Expense }
   | { type: "REMOVE_EXPENSE"; expenseId: string }
+  | { type: "SET_EXPENSES"; expenses: Expense[] }
   | { type: "SET_AUTH_SESSION"; user: User }
-  | { type: "SET_REMOTE_DATA"; contacts: Contact[]; deals: Deal[]; appointments: Appointment[]; users: User[] }
+  | {
+      type: "SET_REMOTE_DATA";
+      contacts: Contact[];
+      deals: Deal[];
+      appointments: Appointment[];
+      users: User[];
+      suppliers: Supplier[];
+      supplierProducts: SupplierProduct[];
+    }
   | { type: "ENTER_TENANT_AS_GESTOR"; tenantId: string; tenantName: string }
   | { type: "EXIT_IMPERSONATION" };
 
@@ -169,6 +188,10 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       // atualização otimista (ex.: PipelinePage.handleMoveDeal) passando o
       // deal original de volta se a chamada de API falhar.
       return { ...state, deals: state.deals.map((d) => (d.id === action.deal.id ? action.deal : d)) };
+    }
+
+    case "REMOVE_DEAL": {
+      return { ...state, deals: state.deals.filter((d) => d.id !== action.dealId) };
     }
 
     case "ADD_CONVERSATION": {
@@ -384,6 +407,13 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       return { ...state, expenses: state.expenses.filter((e) => e.id !== action.expenseId) };
     }
 
+    case "SET_EXPENSES": {
+      // Substituição completa (não ADD_EXPENSE em loop) — GastosPage busca
+      // os gastos do tenant a cada montagem; usar ADD_EXPENSE duplicaria
+      // tudo se a pessoa saísse e voltasse pra tela.
+      return { ...state, expenses: action.expenses };
+    }
+
     case "SET_AUTH_SESSION": {
       // Login real (Supabase Auth): injeta/atualiza o User derivado do
       // profile no array local para que currentUser()/tenantScope() — que
@@ -441,7 +471,15 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       const users = tenantId
         ? [...state.users.filter((u) => u.tenantId !== tenantId), ...action.users]
         : state.users;
-      return { ...state, contacts: action.contacts, deals: action.deals, appointments: action.appointments, users };
+      return {
+        ...state,
+        contacts: action.contacts,
+        deals: action.deals,
+        appointments: action.appointments,
+        users,
+        suppliers: action.suppliers,
+        supplierProducts: action.supplierProducts,
+      };
     }
 
     default:
@@ -454,17 +492,20 @@ interface RemoteData {
   deals: Deal[];
   appointments: Appointment[];
   users: User[];
+  suppliers: Supplier[];
+  supplierProducts: SupplierProduct[];
 }
 
 interface CrmContextValue {
   state: CrmState;
   dispatch: Dispatch<CrmAction>;
-  /** Refaz o fetch de contacts/deals/appointments/users do backend real e
-   * substitui essas coleções no state (SET_REMOTE_DATA). Usada por todo
-   * componente que muda esses dados, logo após a chamada de API que
-   * persistiu a mudança. Retorna os dados já mapeados para uso imediato pelo
-   * chamador (ex.: ler o journeyStatus atualizado de um contato sem esperar
-   * o próximo render). */
+  /** Refaz o fetch de contacts/deals/appointments/users/suppliers/
+   * supplierProducts do backend real e substitui essas coleções no state
+   * (SET_REMOTE_DATA). Chamada só na sessão real (login/token refresh) — as
+   * mutações do dia a dia atualizam o state local direto com a resposta da
+   * própria chamada de API, sem refazer este fetch completo (ver comentário
+   * em PipelinePage.handleMoveDeal). Retorna os dados já mapeados para uso
+   * imediato pelo chamador. */
   refreshCrmData: () => Promise<RemoteData>;
   /** Incrementado a cada refreshCrmData() bem-sucedido — permite que telas
    * fora do fluxo contacts/deals/appointments (ex.: ActivityTimeline, que
@@ -504,17 +545,26 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
   const [dataVersion, setDataVersion] = useState(0);
 
   async function refreshCrmData(): Promise<RemoteData> {
-    const [apiContacts, apiDeals, apiAppointments, apiUsers] = await Promise.all([
+    const [apiContacts, apiDeals, apiAppointments, apiUsers, apiSuppliers] = await Promise.all([
       api.listContacts(),
       api.listDeals(),
       api.listAppointments(),
       api.listUsers(),
+      api.listSuppliers(),
     ]);
+    const suppliers = apiSuppliers.map(mapSupplier);
+    // Não existe um "listar todos os produtos do tenant" — só por fornecedor
+    // (GET /suppliers/{id}/products) — então busca em paralelo, um por
+    // fornecedor. Custo aceitável: só roda no login/token refresh, nunca a
+    // cada mutação (ver comentário em refreshCrmData acima).
+    const productsBySupplier = await Promise.all(suppliers.map((s) => api.listSupplierProducts(s.id)));
     const data: RemoteData = {
       contacts: apiContacts.map(mapContact),
       deals: apiDeals.map(mapDeal),
       appointments: apiAppointments.map(mapAppointment),
       users: apiUsers.map(mapUser),
+      suppliers,
+      supplierProducts: productsBySupplier.flat().map(mapSupplierProduct),
     };
     dispatch({ type: "SET_REMOTE_DATA", ...data });
     setDataVersion((v) => v + 1);

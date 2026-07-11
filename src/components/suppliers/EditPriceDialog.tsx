@@ -1,7 +1,8 @@
-// EditPriceDialog — edita o preço atual de um produto de fornecedor.
-// Dispatcha UPDATE_SUPPLIER_PRODUCT_PRICE, que o reducer usa para atualizar
-// currentPrice e registrar a entrada correspondente em supplierPriceChanges
-// (consumida por priceHistoryForProduct / PriceHistorySheet).
+// EditPriceDialog — edita o preço atual de um produto de fornecedor via API
+// real (PATCH .../price). Depois de persistir, dispatcha
+// UPDATE_SUPPLIER_PRODUCT_PRICE pra atualizar currentPrice local e registrar
+// a entrada correspondente em supplierPriceChanges (consumida por
+// priceHistoryForProduct / PriceHistorySheet).
 
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ApiError, api } from "@/lib/apiClient";
 import { useCrm } from "@/lib/store";
 import type { SupplierProduct } from "@/lib/types";
 
@@ -31,6 +33,7 @@ export function EditPriceDialog({ product, open, onOpenChange }: EditPriceDialog
 
   const [price, setPrice] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (open && product) {
@@ -43,7 +46,7 @@ export function EditPriceDialog({ product, open, onOpenChange }: EditPriceDialog
     onOpenChange(next);
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!product) return;
 
@@ -53,10 +56,17 @@ export function EditPriceDialog({ product, open, onOpenChange }: EditPriceDialog
       return;
     }
 
-    dispatch({ type: "UPDATE_SUPPLIER_PRODUCT_PRICE", productId: product.id, price: parsedPrice });
-    toast.success(`Preço de ${product.name} atualizado.`);
-
-    handleOpenChange(false);
+    setSubmitting(true);
+    try {
+      await api.updateSupplierProductPrice(product.id, parsedPrice);
+      dispatch({ type: "UPDATE_SUPPLIER_PRODUCT_PRICE", productId: product.id, price: parsedPrice });
+      toast.success(`Preço de ${product.name} atualizado.`);
+      handleOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao atualizar preço.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -88,7 +98,9 @@ export function EditPriceDialog({ product, open, onOpenChange }: EditPriceDialog
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit">Salvar alterações</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Salvando…" : "Salvar alterações"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

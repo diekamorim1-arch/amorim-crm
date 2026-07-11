@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddLeadDialog, type AddLeadFormValues } from "@/components/pipeline/AddLeadDialog";
+import { DeleteDealDialog } from "@/components/pipeline/DeleteDealDialog";
 import { EditDealDialog } from "@/components/pipeline/EditDealDialog";
 import { KanbanColumn } from "@/components/pipeline/KanbanColumn";
 import { LostDealsSheet } from "@/components/pipeline/LostDealsSheet";
@@ -33,6 +34,8 @@ export function PipelinePage() {
   const [lostOpen, setLostOpen] = useState(false);
   const [lostDialogDeal, setLostDialogDeal] = useState<Deal | null>(null);
   const [editDealTarget, setEditDealTarget] = useState<Deal | null>(null);
+  const [deleteDealTarget, setDeleteDealTarget] = useState<Deal | null>(null);
+  const [deletingDeal, setDeletingDeal] = useState(false);
 
   const isGestor = currentUser(state)?.role === "gestor";
 
@@ -98,6 +101,22 @@ export function PipelinePage() {
       toast.error(error instanceof ApiError ? error.message : "Erro ao marcar negócio como perdido.");
     }
     setLostDialogDeal(null);
+  }
+
+  async function handleConfirmDeleteDeal() {
+    if (!deleteDealTarget) return;
+
+    setDeletingDeal(true);
+    try {
+      await api.deleteDeal(deleteDealTarget.id);
+      dispatch({ type: "REMOVE_DEAL", dealId: deleteDealTarget.id });
+      toast.success(`Negócio ${deleteDealTarget.title} excluído.`);
+      setDeleteDealTarget(null);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao excluir negócio.");
+    } finally {
+      setDeletingDeal(false);
+    }
   }
 
   function handleOpenFicha(contactId: string) {
@@ -220,6 +239,7 @@ export function PipelinePage() {
             onOpenFicha={handleOpenFicha}
             onOpenConversation={handleOpenConversation}
             onEditDeal={isGestor ? setEditDealTarget : undefined}
+            onDeleteDeal={isGestor ? setDeleteDealTarget : undefined}
             footer={
               stage.id === "pos_venda" && olderWonCount > 0 ? (
                 <p className="text-xs text-muted-foreground">
@@ -254,6 +274,13 @@ export function PipelinePage() {
         deal={editDealTarget}
         open={!!editDealTarget}
         onOpenChange={(open) => !open && setEditDealTarget(null)}
+      />
+
+      <DeleteDealDialog
+        deal={deleteDealTarget}
+        deleting={deletingDeal}
+        onOpenChange={(open) => !open && setDeleteDealTarget(null)}
+        onConfirm={handleConfirmDeleteDeal}
       />
     </div>
   );

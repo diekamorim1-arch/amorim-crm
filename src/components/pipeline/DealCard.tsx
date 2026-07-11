@@ -27,6 +27,7 @@ interface DealCardProps {
   onOpenFicha: (contactId: string) => void;
   onOpenConversation: (contactId: string) => void;
   onEditDeal?: (deal: Deal) => void;
+  onDeleteDeal?: (deal: Deal) => void;
 }
 
 function initialsOf(name: string): string {
@@ -48,6 +49,7 @@ export function DealCard({
   onOpenFicha,
   onOpenConversation,
   onEditDeal,
+  onDeleteDeal,
 }: DealCardProps) {
   const stale = isStale(deal);
 
@@ -99,6 +101,11 @@ export function DealCard({
             <DropdownMenuItem variant="destructive" onSelect={() => onMarkLost(deal)}>
               Marcar como perdido
             </DropdownMenuItem>
+            {onDeleteDeal && (
+              <DropdownMenuItem variant="destructive" onSelect={() => onDeleteDeal(deal)}>
+                Excluir negócio
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
