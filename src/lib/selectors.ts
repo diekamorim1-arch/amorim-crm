@@ -97,6 +97,21 @@ export function isImpersonating(state: CrmState): boolean {
   return realUser?.role === "admin_saas" && state.session.role === "gestor";
 }
 
+/** Usuários elegíveis pra "Responsável" nos formulários de lead/cliente/
+ * agendamento: o time real do tenant, mais o próprio admin_saas quando está
+ * impersonando. O admin nunca tem vínculo em user_profiles com esta loja
+ * (tenant_id null no perfil dele), então nunca aparece em
+ * tenantScope(state).users — mas o backend aceita ele como owner_id da
+ * própria sessão impersonada (ver app/core/tenant_guard.py::
+ * verify_owner_or_self), então ele precisa aparecer como opção aqui. */
+export function assignableUsers(state: CrmState): User[] {
+  const users = tenantScope(state).users;
+  if (!isImpersonating(state)) return users;
+  const admin = state.users.find((u) => u.id === state.session!.userId);
+  if (!admin) return users;
+  return [...users, { ...admin, role: "gestor", name: `${admin.name} (Admin)` }];
+}
+
 /** Deals ativos (outcome !== "perdido") do tenant atual, agrupados por estágio. */
 export function dealsByStage(state: CrmState): Record<Stage, Deal[]> {
   const { deals } = tenantScope(state);

@@ -39,7 +39,7 @@ import { ApiError, api } from "@/lib/apiClient";
 import { APPOINTMENT_TYPE_LABELS } from "@/lib/constants";
 import { toDateInputValue } from "@/components/agenda/weekGridMath";
 import { cn } from "@/lib/utils";
-import { tenantScope } from "@/lib/selectors";
+import { assignableUsers, tenantScope } from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
 import type { Appointment, AppointmentType } from "@/lib/types";
 
@@ -102,7 +102,8 @@ const EMPTY_ERRORS = { contact: "", horario: "" };
 
 export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appointment }: AppointmentDialogProps) {
   const { state, refreshCrmData } = useCrm();
-  const { contacts, deals, users } = tenantScope(state);
+  const { contacts, deals } = tenantScope(state);
+  const users = assignableUsers(state);
   const defaultOwnerId = state.session?.userId ?? users[0]?.id ?? "";
 
   const [form, setForm] = useState<FormState>(() =>

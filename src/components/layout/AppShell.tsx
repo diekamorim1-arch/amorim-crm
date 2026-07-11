@@ -27,7 +27,7 @@ export function AppShell() {
 
   function handleExitImpersonation() {
     dispatch({ type: "EXIT_IMPERSONATION" });
-    navigate("/admin");
+    navigate("/");
   }
 
   if (session.role === "atendente") {

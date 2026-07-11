@@ -14,7 +14,7 @@ import { MarkLostDialog } from "@/components/pipeline/MarkLostDialog";
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/apiClient";
 import { STAGES } from "@/lib/constants";
-import { contactById, conversationWithContact, currentUser, dealsByStage, lostDeals, tenantScope } from "@/lib/selectors";
+import { assignableUsers, contactById, conversationWithContact, currentUser, dealsByStage, lostDeals } from "@/lib/selectors";
 import { newId, useCrm } from "@/lib/store";
 import type { Conversation, Deal, LossReason, Stage } from "@/lib/types";
 
@@ -203,7 +203,7 @@ export function PipelinePage() {
       <AddLeadDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        users={tenantScope(state).users}
+        users={assignableUsers(state)}
         defaultOwnerId={state.session?.userId ?? ""}
         onSubmit={handleCreateLead}
       />

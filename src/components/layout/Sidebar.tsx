@@ -50,7 +50,10 @@ const GESTOR_ITEMS: NavItem[] = [
   { to: "/config", label: "Configurações", icon: Settings },
 ];
 
-const ADMIN_ITEMS: NavItem[] = [{ to: "/admin", label: "Lojas", icon: Store }];
+const ADMIN_ITEMS: NavItem[] = [
+  { to: "/", label: "Início", icon: LayoutDashboard },
+  { to: "/admin", label: "Lojas", icon: Store },
+];
 
 function itemsForRole(role: Role): NavItem[] {
   if (role === "gestor") return GESTOR_ITEMS;

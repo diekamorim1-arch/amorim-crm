@@ -24,6 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ROLE_LABELS } from "@/lib/constants";
+import { isImpersonating } from "@/lib/selectors";
+import { useCrm } from "@/lib/store";
 import { supabase } from "@/lib/supabaseClient";
 import type { Role } from "@/lib/types";
 
@@ -37,6 +39,7 @@ const INVITE_ROLES: Role[] = ["atendente", "gestor"];
 const EMPTY_ERRORS = { name: "", email: "" };
 
 export function InviteUserDialog({ open, onOpenChange }: InviteUserDialogProps) {
+  const { state } = useCrm();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("atendente");
@@ -68,7 +71,18 @@ export function InviteUserDialog({ open, onOpenChange }: InviteUserDialogProps) 
     setSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke("create-team-member", {
-        body: { name: name.trim(), email: email.trim(), role },
+        // A Edge Function lê o papel direto do JWT real, que não muda
+        // durante "Entrar como gestor" (diferente do backend FastAPI, que já
+        // resolve isso via X-Impersonate-Tenant) — por isso, quando quem
+        // está chamando é um admin_saas impersonando, precisamos mandar o
+        // tenant_id da loja impersonada explícito no corpo, senão a function
+        // não tem como saber em qual loja convidar.
+        body: {
+          name: name.trim(),
+          email: email.trim(),
+          role,
+          ...(isImpersonating(state) ? { tenant_id: state.session!.tenantId } : {}),
+        },
       });
       if (error || data?.error) {
         toast.error(data?.error ?? error?.message ?? "Erro ao convidar membro da equipe.");

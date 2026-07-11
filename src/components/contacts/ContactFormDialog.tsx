@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ORIGIN_LABELS, PRODUCT_LINE_LABELS } from "@/lib/constants";
-import { tenantScope } from "@/lib/selectors";
+import { assignableUsers } from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import type { Contact, Origin, ProductLine } from "@/lib/types";
@@ -77,7 +77,7 @@ function valuesFromContact(contact: Contact | undefined, defaultOwnerId: string)
 
 export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDialogProps) {
   const { state, refreshCrmData } = useCrm();
-  const users = tenantScope(state).users;
+  const users = assignableUsers(state);
   const defaultOwnerId = contact?.ownerId ?? state.session?.userId ?? "";
 
   const [values, setValues] = useState<FormValues>(() => valuesFromContact(contact, defaultOwnerId));

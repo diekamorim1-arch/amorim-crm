@@ -10,6 +10,7 @@ import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { ContactsPage } from "@/pages/ContactsPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { GastosPage } from "@/pages/GastosPage";
+import { HomePage } from "@/pages/HomePage";
 import { InboxPage } from "@/pages/InboxPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PipelinePage } from "@/pages/PipelinePage";
@@ -30,7 +31,7 @@ function App() {
       <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
 
       <Route element={<AppShell />}>
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/" element={session?.role === "admin_saas" && !session.tenantId ? <HomePage /> : <DashboardPage />} />
         <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/inbox/:conversationId" element={<InboxPage />} />
