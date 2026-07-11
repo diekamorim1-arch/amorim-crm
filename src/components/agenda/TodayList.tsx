@@ -13,7 +13,7 @@ import { APPOINTMENT_TYPE_STYLES } from "@/components/agenda/appointmentTypeStyl
 import { formatHourMinute } from "@/components/agenda/weekGridMath";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapAppointment } from "@/lib/apiClient";
 import { APPOINTMENT_STATUS_LABELS, APPOINTMENT_TYPE_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useCrm } from "@/lib/store";
@@ -28,7 +28,7 @@ interface TodayListProps {
 }
 
 export function TodayList({ appointments, contacts, deals, users, onSelectAppointment }: TodayListProps) {
-  const { refreshCrmData } = useCrm();
+  const { dispatch } = useCrm();
 
   const sorted = [...appointments].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
@@ -38,8 +38,8 @@ export function TodayList({ appointments, contacts, deals, users, onSelectAppoin
     event.stopPropagation();
 
     try {
-      await api.updateAppointment(appt.id, { status });
-      await refreshCrmData();
+      const updated = await api.updateAppointment(appt.id, { status });
+      dispatch({ type: "UPDATE_APPOINTMENT", appointment: mapAppointment(updated) });
       toast.success(status === "concluido" ? "Agendamento concluído." : "Agendamento cancelado.");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar agendamento.");

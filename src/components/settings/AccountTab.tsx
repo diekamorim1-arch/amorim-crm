@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapUser } from "@/lib/apiClient";
 import { currentUser } from "@/lib/selectors";
 import { supabase } from "@/lib/supabaseClient";
 import { useCrm } from "@/lib/store";
@@ -53,7 +53,7 @@ async function toUploadableImage(file: File): Promise<File> {
 }
 
 export function AccountTab() {
-  const { state, refreshCrmData } = useCrm();
+  const { state, dispatch } = useCrm();
   const me = currentUser(state);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -83,8 +83,8 @@ export function AccountTab() {
 
     setNameLoading(true);
     try {
-      await api.updateMe(name.trim());
-      await refreshCrmData();
+      const updated = await api.updateMe(name.trim());
+      dispatch({ type: "UPDATE_USER", user: mapUser(updated) });
       toast.success("Nome atualizado.");
     } catch (error) {
       setNameError(error instanceof ApiError ? error.message : "Não foi possível atualizar o nome.");
@@ -107,8 +107,8 @@ export function AccountTab() {
         return;
       }
 
-      await api.uploadAvatar(file);
-      await refreshCrmData();
+      const updated = await api.uploadAvatar(file);
+      dispatch({ type: "UPDATE_USER", user: mapUser(updated) });
       toast.success("Foto atualizada.");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Não foi possível processar essa imagem. Tente novamente ou use outro formato.");

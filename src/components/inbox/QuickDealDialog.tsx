@@ -7,7 +7,7 @@
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapDeal } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,7 +38,7 @@ interface QuickDealDialogProps {
 }
 
 export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDialogProps) {
-  const { state, refreshCrmData } = useCrm();
+  const { state, dispatch } = useCrm();
   const contact = contactById(state, contactId);
   const { suppliers, supplierProducts } = tenantScope(state);
 
@@ -83,26 +83,32 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
     const productLabel = product?.name ?? "Novo negócio";
 
     try {
-      const createdDeal = await api.createDeal({
-        contact_id: contact.id,
-        title: productLabel,
-        products: productLabel,
-        value: Number(value),
-        payment,
-        trade_in: false,
-        owner_id: contact.ownerId,
-      });
+      const createdDeal = mapDeal(
+        await api.createDeal({
+          contact_id: contact.id,
+          title: productLabel,
+          products: productLabel,
+          value: Number(value),
+          payment,
+          trade_in: false,
+          owner_id: contact.ownerId,
+        }),
+      );
+      dispatch({ type: "ADD_DEAL", deal: createdDeal });
+
       if (stage !== "novo_lead") {
-        await api.moveDeal(createdDeal.id, stage);
+        const moved = await api.moveDeal(createdDeal.id, stage);
+        dispatch({ type: "UPDATE_DEAL", deal: mapDeal(moved) });
       }
       if (product) {
         try {
-          await api.updateDealFinancials(createdDeal.id, {
+          const withFinancials = await api.updateDealFinancials(createdDeal.id, {
             supplier_product_id: product.id,
             supplier_value: product.currentPrice,
             gift_value: 0,
             freight_value: 0,
           });
+          dispatch({ type: "UPDATE_DEAL", deal: mapDeal(withFinancials) });
         } catch (financialsError) {
           toast.error(
             financialsError instanceof ApiError
@@ -111,13 +117,14 @@ export function QuickDealDialog({ open, onOpenChange, contactId }: QuickDealDial
           );
         }
       }
-      await api.createActivity({
+      // Fire-and-forget: só um registro informativo no histórico do
+      // cliente, ninguém lê state.activities pra renderizar nada.
+      void api.createActivity({
         contact_id: contact.id,
         deal_id: createdDeal.id,
         type: "mudanca_estagio",
         description: `Negócio criado pelo Inbox: ${productLabel}.`,
       });
-      await refreshCrmData();
       toast.success(`Negócio criado para ${contact.name}.`);
       reset();
       onOpenChange(false);

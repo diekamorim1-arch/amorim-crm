@@ -129,6 +129,29 @@ describe("crmReducer — MOVE_DEAL", () => {
   });
 });
 
+describe("crmReducer — UPDATE_DEAL", () => {
+  it("substitui o deal pelo objeto informado, sem tocar em outros deals", () => {
+    const state = baseState();
+    const secondDeal: Deal = { ...state.deals[0], id: "deal_2", value: 999 };
+    const withSecond = { ...state, deals: [...state.deals, secondDeal] };
+
+    const updatedDeal: Deal = { ...state.deals[0], value: 7500, stage: "fechamento" };
+    const next = crmReducer(withSecond, { type: "UPDATE_DEAL", deal: updatedDeal });
+
+    expect(next.deals.find((d) => d.id === "deal_1")).toEqual(updatedDeal);
+    expect(next.deals.find((d) => d.id === "deal_2")).toEqual(secondDeal);
+  });
+
+  it("usada pra reverter uma atualização otimista: reaplicar o deal original desfaz a mudança", () => {
+    const state = baseState();
+    const original = state.deals[0];
+    const optimistic = crmReducer(state, { type: "MOVE_DEAL", dealId: "deal_1", stage: "pos_venda" });
+    const reverted = crmReducer(optimistic, { type: "UPDATE_DEAL", deal: original });
+
+    expect(reverted.deals.find((d) => d.id === "deal_1")).toEqual(original);
+  });
+});
+
 describe("crmReducer — MARK_DEAL_LOST", () => {
   it("exige reason, marca outcome perdido e o deal some do board mas aparece em lostDeals", () => {
     const state = baseState();

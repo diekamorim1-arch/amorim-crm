@@ -12,7 +12,7 @@ import { KanbanColumn } from "@/components/pipeline/KanbanColumn";
 import { LostDealsSheet } from "@/components/pipeline/LostDealsSheet";
 import { MarkLostDialog } from "@/components/pipeline/MarkLostDialog";
 import { Button } from "@/components/ui/button";
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapContact, mapDeal } from "@/lib/apiClient";
 import { STAGES } from "@/lib/constants";
 import { assignableUsers, contactById, conversationWithContact, currentUser, dealsByStage, lostDeals } from "@/lib/selectors";
 import { newId, useCrm } from "@/lib/store";
@@ -26,7 +26,7 @@ function isRecentWin(deal: Deal): boolean {
 }
 
 export function PipelinePage() {
-  const { state, dispatch, refreshCrmData } = useCrm();
+  const { state, dispatch } = useCrm();
   const navigate = useNavigate();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -54,17 +54,35 @@ export function PipelinePage() {
     const deal = state.deals.find((d) => d.id === dealId);
     if (!deal || deal.stage === stage) return;
 
+    // Atualização otimista: o card se move na hora, antes de qualquer round-trip
+    // de rede — sem isso, cada arraste esperava moveDeal() E DEPOIS um
+    // refreshCrmData() completo (4 requisições) antes da UI reagir.
+    const originalContact = state.contacts.find((c) => c.id === deal.contactId);
+    // Mesma fórmula do backend (won_count >= 2 → recorrente) — calculada
+    // localmente porque o deal recém-movido ainda não está com outcome
+    // "ganho" neste snapshot de state.deals, então soma 1 pra contar a venda
+    // atual. Só usado pro texto do toast, disparado depois da confirmação
+    // da API (não junto do dispatch otimista) — senão um moveDeal que falha
+    // mostraria "Venda ganha!" seguido do toast de erro.
+    const wonCount = state.deals.filter((d) => d.contactId === deal.contactId && d.outcome === "ganho").length + 1;
+    dispatch({ type: "MOVE_DEAL", dealId, stage });
+
     try {
-      await api.moveDeal(dealId, stage);
-      const fresh = await refreshCrmData();
+      const updated = await api.moveDeal(dealId, stage);
+      // Reconcilia com a resposta autoritativa do servidor (stageChangedAt
+      // exato, por exemplo) — não substitui a atualização otimista, só
+      // corrige qualquer pequena divergência.
+      dispatch({ type: "UPDATE_DEAL", deal: mapDeal(updated) });
       if (stage === "pos_venda") {
-        const contact = fresh.contacts.find((c) => c.id === deal.contactId);
-        if (contact) {
-          const label = contact.journeyStatus === "recorrente" ? "recorrente" : "cliente";
-          toast.success(`Venda ganha! 🎉 ${contact.name} agora é ${label}.`);
-        }
+        const label = wonCount >= 2 ? "recorrente" : "cliente";
+        toast.success(`Venda ganha! 🎉 ${originalContact?.name ?? "Cliente"} agora é ${label}.`);
       }
     } catch (error) {
+      // Reverte a atualização otimista: volta o deal e (se era uma venda) o
+      // contato pro estado exato de antes do drag, sem reprocessar a lógica
+      // de MOVE_DEAL (que reaplicaria o cálculo de journeyStatus errado).
+      dispatch({ type: "UPDATE_DEAL", deal });
+      if (originalContact) dispatch({ type: "UPDATE_CONTACT", contact: originalContact });
       toast.error(error instanceof ApiError ? error.message : "Erro ao mover negócio.");
     }
   }
@@ -73,8 +91,8 @@ export function PipelinePage() {
     if (!lostDialogDeal) return;
 
     try {
-      await api.markDealLost(lostDialogDeal.id, reason);
-      await refreshCrmData();
+      const updated = await api.markDealLost(lostDialogDeal.id, reason);
+      dispatch({ type: "UPDATE_DEAL", deal: mapDeal(updated) });
       toast.success("Negócio marcado como perdido.");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao marcar negócio como perdido.");
@@ -112,31 +130,42 @@ export function PipelinePage() {
     const productLabel = values.supplierProductName ?? "Novo negócio";
 
     try {
-      const contact = await api.createContact({
-        name: values.name,
-        whatsapp: values.whatsapp,
-        origin: values.origin,
-        interests: [],
-        tags: [],
-        owner_id: values.ownerId,
-      });
-      const deal = await api.createDeal({
-        contact_id: contact.id,
-        title: productLabel,
-        products: productLabel,
-        value: values.value,
-        payment: "pix",
-        trade_in: false,
-        owner_id: values.ownerId,
-      });
+      const contact = mapContact(
+        await api.createContact({
+          name: values.name,
+          whatsapp: values.whatsapp,
+          origin: values.origin,
+          interests: [],
+          tags: [],
+          owner_id: values.ownerId,
+        }),
+      );
+      dispatch({ type: "ADD_CONTACT", contact });
+
+      let deal = mapDeal(
+        await api.createDeal({
+          contact_id: contact.id,
+          title: productLabel,
+          products: productLabel,
+          value: values.value,
+          payment: "pix",
+          trade_in: false,
+          owner_id: values.ownerId,
+        }),
+      );
+      dispatch({ type: "ADD_DEAL", deal });
+
       if (values.supplierProductId) {
         try {
-          await api.updateDealFinancials(deal.id, {
-            supplier_product_id: values.supplierProductId,
-            supplier_value: values.supplierValue ?? 0,
-            gift_value: 0,
-            freight_value: 0,
-          });
+          deal = mapDeal(
+            await api.updateDealFinancials(deal.id, {
+              supplier_product_id: values.supplierProductId,
+              supplier_value: values.supplierValue ?? 0,
+              gift_value: 0,
+              freight_value: 0,
+            }),
+          );
+          dispatch({ type: "UPDATE_DEAL", deal });
         } catch (financialsError) {
           toast.error(
             financialsError instanceof ApiError
@@ -145,13 +174,16 @@ export function PipelinePage() {
           );
         }
       }
-      await api.createActivity({
+      // Fire-and-forget: a activity é só um registro informativo no
+      // histórico do cliente (ninguém lê state.activities pra renderizar
+      // nada — ActivityTimeline busca direto da API por contactId), então
+      // não precisa bloquear o fechamento do diálogo nem tratar erro aqui.
+      void api.createActivity({
         contact_id: contact.id,
         deal_id: deal.id,
         type: "mudanca_estagio",
         description: `Novo lead criado: ${productLabel}.`,
       });
-      await refreshCrmData();
       toast.success(`Lead ${contact.name} criado.`);
       setAddOpen(false);
     } catch (error) {

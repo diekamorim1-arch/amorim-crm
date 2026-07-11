@@ -8,7 +8,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapContact } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -76,7 +76,7 @@ function valuesFromContact(contact: Contact | undefined, defaultOwnerId: string)
 }
 
 export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDialogProps) {
-  const { state, refreshCrmData } = useCrm();
+  const { state, dispatch } = useCrm();
   const users = assignableUsers(state);
   const defaultOwnerId = contact?.ownerId ?? state.session?.userId ?? "";
 
@@ -132,7 +132,7 @@ export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDi
 
     try {
       if (isEdit && contact) {
-        await api.updateContact(contact.id, {
+        const updated = await api.updateContact(contact.id, {
           name: values.name.trim(),
           whatsapp: values.whatsapp.trim(),
           instagram: values.instagram.trim() || undefined,
@@ -144,22 +144,24 @@ export function ContactFormDialog({ contact, open, onOpenChange }: ContactFormDi
           owner_id: values.ownerId || contact.ownerId,
           address,
         });
-        await refreshCrmData();
+        dispatch({ type: "UPDATE_CONTACT", contact: mapContact(updated) });
         toast.success(`Alterações de ${values.name.trim()} salvas.`);
       } else {
-        const created = await api.createContact({
-          name: values.name.trim(),
-          whatsapp: values.whatsapp.trim(),
-          instagram: values.instagram.trim() || undefined,
-          email: values.email.trim() || undefined,
-          cpf: values.cpf.trim() || undefined,
-          origin: values.origin,
-          interests: values.interests,
-          tags,
-          owner_id: values.ownerId || state.session.userId,
-          address,
-        });
-        await refreshCrmData();
+        const created = mapContact(
+          await api.createContact({
+            name: values.name.trim(),
+            whatsapp: values.whatsapp.trim(),
+            instagram: values.instagram.trim() || undefined,
+            email: values.email.trim() || undefined,
+            cpf: values.cpf.trim() || undefined,
+            origin: values.origin,
+            interests: values.interests,
+            tags,
+            owner_id: values.ownerId || state.session.userId,
+            address,
+          }),
+        );
+        dispatch({ type: "ADD_CONTACT", contact: created });
         toast.success(`Cliente ${created.name} criado.`);
       }
       handleOpenChange(false);

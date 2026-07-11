@@ -8,7 +8,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapDeal } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,7 +40,7 @@ interface EditDealDialogProps {
 }
 
 export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps) {
-  const { state, refreshCrmData } = useCrm();
+  const { state, dispatch } = useCrm();
   const { suppliers, supplierProducts } = tenantScope(state);
 
   const [value, setValue] = useState("");
@@ -98,13 +98,17 @@ export function EditDealDialog({ deal, open, onOpenChange }: EditDealDialogProps
 
     try {
       await api.updateDeal(deal.id, { value: parsedValue });
-      await api.updateDealFinancials(deal.id, {
+      // updateDealFinancials devolve o deal completo (não só os campos
+      // financeiros) — já reflete o value atualizado na chamada acima, então
+      // um único dispatch depois desta segunda chamada já deixa o state
+      // local totalmente sincronizado, sem precisar de refreshCrmData().
+      const updated = await api.updateDealFinancials(deal.id, {
         supplier_product_id: supplierProductId || undefined,
         supplier_value: parsedSupplierValue,
         gift_value: parsedGiftValue,
         freight_value: parsedFreightValue,
       });
-      await refreshCrmData();
+      dispatch({ type: "UPDATE_DEAL", deal: mapDeal(updated) });
       toast.success(`Negócio ${deal.title} atualizado.`);
       handleOpenChange(false);
     } catch (error) {

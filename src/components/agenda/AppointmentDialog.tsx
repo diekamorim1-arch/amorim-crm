@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapAppointment } from "@/lib/apiClient";
 import { APPOINTMENT_TYPE_LABELS } from "@/lib/constants";
 import { toDateInputValue } from "@/components/agenda/weekGridMath";
 import { cn } from "@/lib/utils";
@@ -101,7 +101,7 @@ function buildInitialState(
 const EMPTY_ERRORS = { contact: "", horario: "" };
 
 export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appointment }: AppointmentDialogProps) {
-  const { state, refreshCrmData } = useCrm();
+  const { state, dispatch } = useCrm();
   const { contacts, deals } = tenantScope(state);
   const users = assignableUsers(state);
   const defaultOwnerId = state.session?.userId ?? users[0]?.id ?? "";
@@ -176,7 +176,7 @@ export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appoi
 
     try {
       if (isEditing && appointment) {
-        await api.updateAppointment(appointment.id, {
+        const updated = await api.updateAppointment(appointment.id, {
           contact_id: form.contactId,
           deal_id: resolvedDealId,
           type: form.type,
@@ -185,10 +185,10 @@ export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appoi
           owner_id: form.ownerId,
           note: form.note.trim() || undefined,
         });
-        await refreshCrmData();
+        dispatch({ type: "UPDATE_APPOINTMENT", appointment: mapAppointment(updated) });
         toast.success(`Agendamento de ${contact.name} atualizado.`);
       } else {
-        await api.createAppointment({
+        const created = await api.createAppointment({
           contact_id: form.contactId,
           deal_id: resolvedDealId,
           type: form.type,
@@ -197,13 +197,16 @@ export function AppointmentDialog({ contactId, dealId, open, onOpenChange, appoi
           owner_id: form.ownerId,
           note: form.note.trim() || undefined,
         });
-        await api.createActivity({
+        dispatch({ type: "ADD_APPOINTMENT", appointment: mapAppointment(created) });
+        // Fire-and-forget: só um registro informativo no histórico do
+        // cliente, ninguém lê state.activities pra renderizar nada
+        // (ActivityTimeline busca direto da API por contactId).
+        void api.createActivity({
           contact_id: form.contactId,
           deal_id: resolvedDealId,
           type: "agendamento",
           description: `Agendamento de ${APPOINTMENT_TYPE_LABELS[form.type].toLowerCase()} criado.`,
         });
-        await refreshCrmData();
         toast.success(`Agendamento criado para ${contact.name}.`);
       }
       handleOpenChange(false);

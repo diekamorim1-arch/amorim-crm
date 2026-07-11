@@ -36,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapUser } from "@/lib/apiClient";
 import { ROLE_LABELS } from "@/lib/constants";
 import { useCrm } from "@/lib/store";
 import type { Role, User } from "@/lib/types";
@@ -58,7 +58,7 @@ function initials(name: string): string {
 }
 
 export function TeamTab({ users }: TeamTabProps) {
-  const { state, refreshCrmData } = useCrm();
+  const { state, dispatch } = useCrm();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
@@ -69,8 +69,8 @@ export function TeamTab({ users }: TeamTabProps) {
     if (role === user.role) return;
 
     try {
-      await api.updateUserRole(user.id, role);
-      await refreshCrmData();
+      const updated = await api.updateUserRole(user.id, role);
+      dispatch({ type: "UPDATE_USER", user: mapUser(updated) });
       toast.success(`Papel de ${user.name} atualizado.`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar papel.");
@@ -81,8 +81,8 @@ export function TeamTab({ users }: TeamTabProps) {
     const nextActive = !user.isActive;
 
     try {
-      await api.updateUserStatus(user.id, nextActive);
-      await refreshCrmData();
+      const updated = await api.updateUserStatus(user.id, nextActive);
+      dispatch({ type: "UPDATE_USER", user: mapUser(updated) });
       toast.success(nextActive ? `${user.name} reativado.` : `${user.name} desativado.`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar status.");
@@ -95,7 +95,7 @@ export function TeamTab({ users }: TeamTabProps) {
 
     try {
       await api.deleteUser(user.id);
-      await refreshCrmData();
+      dispatch({ type: "REMOVE_USER", userId: user.id });
       toast.success(`${user.name} removido da equipe.`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao excluir usuário.");
@@ -199,7 +199,6 @@ export function TeamTab({ users }: TeamTabProps) {
         user={editingUser}
         open={!!editingUser}
         onOpenChange={(open) => !open && setEditingUser(null)}
-        onSaved={refreshCrmData}
       />
 
       <AlertDialog open={!!deletingUser} onOpenChange={(open) => !open && setDeletingUser(null)}>

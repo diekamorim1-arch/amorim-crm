@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapDeal } from "@/lib/apiClient";
 import { ORIGIN_LABELS, STAGES, STAGE_LABELS } from "@/lib/constants";
 import { brl } from "@/lib/format";
 import { contactById, tenantScope } from "@/lib/selectors";
@@ -40,7 +40,7 @@ function initialsOf(name: string): string {
 }
 
 export function ContactPanel({ contactId }: ContactPanelProps) {
-  const { state, refreshCrmData } = useCrm();
+  const { state, dispatch } = useCrm();
   const navigate = useNavigate();
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
   const [apptDialogOpen, setApptDialogOpen] = useState(false);
@@ -61,11 +61,23 @@ export function ContactPanel({ contactId }: ContactPanelProps) {
     .sort((a, b) => new Date(b.stageChangedAt).getTime() - new Date(a.stageChangedAt).getTime())[0];
 
   async function handleMoveStage(stage: Stage) {
-    if (!activeDeal || stage === activeDeal.stage) return;
+    // TS não propaga o narrowing do "if (!contact) return" do topo do
+    // componente pra dentro de function declarations aninhadas (diferente de
+    // consts/arrow functions) — guarda redundante só pra satisfazer o tipo.
+    if (!contact || !activeDeal || stage === activeDeal.stage) return;
 
     try {
-      await api.moveDeal(activeDeal.id, stage);
-      await refreshCrmData();
+      const updated = mapDeal(await api.moveDeal(activeDeal.id, stage));
+      dispatch({ type: "UPDATE_DEAL", deal: updated });
+      if (stage === "pos_venda") {
+        // Mesma fórmula do backend (won_count >= 2 → recorrente) — o deal já
+        // vem com outcome "ganho" na resposta, então basta contar direto.
+        const wonCount = deals.filter((d) => d.contactId === contact.id && d.outcome === "ganho").length + 1;
+        dispatch({
+          type: "UPDATE_CONTACT",
+          contact: { ...contact, journeyStatus: wonCount >= 2 ? "recorrente" : "cliente" },
+        });
+      }
       toast.success(`Negócio movido para ${STAGE_LABELS[stage]}.`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao mover negócio.");

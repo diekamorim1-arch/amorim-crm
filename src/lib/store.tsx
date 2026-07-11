@@ -50,6 +50,7 @@ export type CrmAction =
   | { type: "ADD_CONTACT"; contact: Contact }
   | { type: "UPDATE_CONTACT"; contact: Contact }
   | { type: "ADD_DEAL"; deal: Deal }
+  | { type: "UPDATE_DEAL"; deal: Deal }
   | { type: "ADD_CONVERSATION"; conversation: Conversation }
   | { type: "SEND_MESSAGE"; conversationId: string; text: string; authorId: string }
   | { type: "RECEIVE_MESSAGE"; conversationId: string; text: string }
@@ -158,6 +159,16 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
     case "ADD_DEAL": {
       return { ...state, deals: [...state.deals, action.deal] };
+    }
+
+    case "UPDATE_DEAL": {
+      // Substituição direta do deal pelo objeto retornado pela própria
+      // chamada de API que o mutou (mover de estágio, marcar perdido,
+      // editar) — usada no lugar de refreshCrmData() pra não refazer os 4
+      // fetches completos a cada mutação. Também serve pra reverter uma
+      // atualização otimista (ex.: PipelinePage.handleMoveDeal) passando o
+      // deal original de volta se a chamada de API falhar.
+      return { ...state, deals: state.deals.map((d) => (d.id === action.deal.id ? action.deal : d)) };
     }
 
     case "ADD_CONVERSATION": {

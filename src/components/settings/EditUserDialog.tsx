@@ -4,7 +4,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
-import { ApiError, api } from "@/lib/apiClient";
+import { ApiError, api, mapUser } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,18 +16,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCrm } from "@/lib/store";
 import type { User } from "@/lib/types";
 
 interface EditUserDialogProps {
   user: User | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved: () => void;
 }
 
 const EMPTY_ERRORS = { name: "", email: "" };
 
-export function EditUserDialog({ user, open, onOpenChange, onSaved }: EditUserDialogProps) {
+export function EditUserDialog({ user, open, onOpenChange }: EditUserDialogProps) {
+  const { dispatch } = useCrm();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [errors, setErrors] = useState(EMPTY_ERRORS);
@@ -54,12 +55,12 @@ export function EditUserDialog({ user, open, onOpenChange, onSaved }: EditUserDi
 
     setSubmitting(true);
     try {
-      await api.updateUser(user.id, {
+      const updated = await api.updateUser(user.id, {
         name: name.trim() !== user.name ? name.trim() : undefined,
         email: email.trim() !== user.email ? email.trim() : undefined,
       });
+      dispatch({ type: "UPDATE_USER", user: mapUser(updated) });
       toast.success(`${name.trim()} atualizado.`);
-      onSaved();
       onOpenChange(false);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao atualizar usuário.");
