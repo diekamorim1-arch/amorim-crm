@@ -5,10 +5,11 @@
 
 import { useState } from "react";
 import { Navigate, useParams } from "react-router";
-import { History, Package, Pencil, Plus } from "lucide-react";
+import { History, Package, Pencil, Plus, Upload } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { EditPriceDialog } from "@/components/suppliers/EditPriceDialog";
+import { ImportProductsDialog } from "@/components/suppliers/ImportProductsDialog";
 import { PriceHistorySheet } from "@/components/suppliers/PriceHistorySheet";
 import { SupplierFormDialog } from "@/components/suppliers/SupplierFormDialog";
 import { SupplierProductDialog } from "@/components/suppliers/SupplierProductDialog";
@@ -35,6 +36,7 @@ export function SupplierDetailPage() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [newProductOpen, setNewProductOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<SupplierProduct | null>(null);
   const [priceProduct, setPriceProduct] = useState<SupplierProduct | null>(null);
   const [historyProduct, setHistoryProduct] = useState<SupplierProduct | null>(null);
@@ -75,10 +77,16 @@ export function SupplierDetailPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-medium text-foreground">Produtos</h2>
           {isGestor && (
-            <Button variant="outline" size="sm" onClick={() => setNewProductOpen(true)}>
-              <Plus />
-              Novo produto
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                <Upload />
+                Importar produtos
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setNewProductOpen(true)}>
+                <Plus />
+                Novo produto
+              </Button>
+            </div>
           )}
         </div>
 
@@ -106,7 +114,9 @@ export function SupplierDetailPage() {
               >
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-medium text-foreground">{product.name}</span>
-                  <span className="text-xs text-muted-foreground">atualizado {relativeTime(product.updatedAt)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {product.colors ? `${product.colors} · ` : ""}atualizado {relativeTime(product.updatedAt)}
+                  </span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
@@ -132,6 +142,7 @@ export function SupplierDetailPage() {
 
       <SupplierFormDialog supplier={supplier} open={editOpen} onOpenChange={setEditOpen} />
       <SupplierProductDialog supplierId={supplier.id} open={newProductOpen} onOpenChange={setNewProductOpen} />
+      <ImportProductsDialog supplierId={supplier.id} open={importOpen} onOpenChange={setImportOpen} />
       <SupplierProductDialog
         supplierId={supplier.id}
         product={editProduct ?? undefined}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { daysAgo } from "./format";
 import { crmReducer } from "./store";
-import { dashboardMetrics, dealsByStage, isStale, lostDeals, priceHistoryForProduct } from "./selectors";
+import { currentUser, dashboardMetrics, dealsByStage, isImpersonating, isStale, lostDeals, priceHistoryForProduct } from "./selectors";
 import type { Attachment, Contact, Conversation, CrmState, Deal, Expense, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
 
 function baseState(): CrmState {
@@ -530,6 +530,7 @@ describe("crmReducer — impersonação (ENTER_TENANT_AS_GESTOR / EXIT_IMPERSONA
       userId: "admin_1",
       tenantId: "tenant_1",
       role: "gestor",
+      realRole: "admin_saas",
       tenantName: "Loja Teste",
     });
     // state.users continua com o perfil real do admin intacto — é isso que
@@ -577,8 +578,44 @@ describe("crmReducer — impersonação (ENTER_TENANT_AS_GESTOR / EXIT_IMPERSONA
       userId: "admin_1",
       tenantId: "tenant_1",
       role: "gestor",
+      realRole: "admin_saas",
       tenantName: "Loja Teste",
     });
+  });
+
+  it("EXIT_IMPERSONATION restaura a sessão real mesmo se o perfil do admin sumir de state.users", () => {
+    // Reproduz o modo de falha relatado: state.users fora de sincronia no
+    // momento do clique não pode mais deixar o botão "Voltar ao painel" sem
+    // efeito nenhum — session.realRole (gravado por ENTER_TENANT_AS_GESTOR)
+    // é a fonte da verdade agora, independente de state.users.
+    const base = stateWithAdmin();
+    const impersonating = crmReducer(base, {
+      type: "ENTER_TENANT_AS_GESTOR",
+      tenantId: "tenant_1",
+      tenantName: "Loja Teste",
+    });
+    const usersWiped = { ...impersonating, users: impersonating.users.filter((u) => u.id !== "admin_1") };
+
+    const next = crmReducer(usersWiped, { type: "EXIT_IMPERSONATION" });
+    expect(next.session).toEqual({ userId: "admin_1", tenantId: "", role: "admin_saas" });
+  });
+
+  it("isImpersonating() e currentUser() continuam funcionando sem o perfil do admin em state.users", () => {
+    const base = stateWithAdmin();
+    const impersonating = crmReducer(base, {
+      type: "ENTER_TENANT_AS_GESTOR",
+      tenantId: "tenant_1",
+      tenantName: "Loja Teste",
+    });
+    const usersWiped = { ...impersonating, users: impersonating.users.filter((u) => u.id !== "admin_1") };
+
+    // Antes desse fix, os dois dependiam do mesmo lookup em state.users: um
+    // state.users fora de sincronia fazia isImpersonating() virar false (o
+    // banner com "Voltar ao painel" some) e currentUser() virar null (o
+    // menu da conta, com o botão "Sair", some da Topbar por completo).
+    expect(isImpersonating(usersWiped)).toBe(true);
+    expect(currentUser(usersWiped)).not.toBeNull();
+    expect(currentUser(usersWiped)?.id).toBe("admin_1");
   });
 });
 

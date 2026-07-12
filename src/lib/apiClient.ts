@@ -255,6 +255,7 @@ export interface ApiSupplierProduct {
   supplier_id: string;
   name: string;
   current_price: number;
+  colors: string | null;
   updated_at: string;
 }
 
@@ -286,6 +287,7 @@ export function mapSupplierProduct(api: ApiSupplierProduct): SupplierProduct {
     supplierId: api.supplier_id,
     name: api.name,
     currentPrice: api.current_price,
+    colors: api.colors ?? undefined,
     updatedAt: api.updated_at,
     // SupplierProductOut não expõe created_at (a tabela não guarda essa
     // coluna separada de updated_at) — mesmo padrão de mapContact/mapDeal
@@ -346,6 +348,16 @@ export interface DealPayload {
   trade_in?: boolean;
   trade_in_desc?: string;
   owner_id: string;
+}
+
+export interface LeadPayload {
+  name: string;
+  whatsapp: string;
+  origin: string;
+  value: number;
+  owner_id: string;
+  supplier_product_id?: string;
+  supplier_value?: number;
 }
 
 export interface DealFinancialsPayload {
@@ -594,6 +606,8 @@ export const api = {
     request<ApiContact>(`/api/v1/contacts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   listDeals: () => request<ApiDeal[]>("/api/v1/deals"),
+  createLead: (body: LeadPayload) =>
+    request<{ contact: ApiContact; deal: ApiDeal }>("/api/v1/leads", { method: "POST", body: JSON.stringify(body) }),
   createDeal: (body: DealPayload) => request<ApiDeal>("/api/v1/deals", { method: "POST", body: JSON.stringify(body) }),
   updateDeal: (id: string, body: Partial<{ title: string; products: string; value: number; payment: string }>) =>
     request<ApiDeal>(`/api/v1/deals/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
@@ -621,12 +635,20 @@ export const api = {
   ) => request<ApiSupplier>(`/api/v1/suppliers/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   listSupplierProducts: (supplierId: string) =>
     request<ApiSupplierProduct[]>(`/api/v1/suppliers/${supplierId}/products`),
-  createSupplierProduct: (supplierId: string, body: { name: string; current_price: number }) =>
+  createSupplierProduct: (supplierId: string, body: { name: string; current_price: number; colors?: string }) =>
     request<ApiSupplierProduct>(`/api/v1/suppliers/${supplierId}/products`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  updateSupplierProduct: (id: string, body: Partial<{ name: string; current_price: number }>) =>
+  bulkCreateSupplierProducts: (
+    supplierId: string,
+    products: { name: string; current_price: number; colors?: string }[],
+  ) =>
+    request<ApiSupplierProduct[]>(`/api/v1/suppliers/${supplierId}/products/bulk`, {
+      method: "POST",
+      body: JSON.stringify({ products }),
+    }),
+  updateSupplierProduct: (id: string, body: Partial<{ name: string; current_price: number; colors: string }>) =>
     request<ApiSupplierProduct>(`/api/v1/supplier-products/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   updateSupplierProductPrice: (id: string, price: number) =>
     request<ApiSupplierProduct>(`/api/v1/supplier-products/${id}/price`, {

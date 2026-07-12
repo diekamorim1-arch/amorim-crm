@@ -146,63 +146,25 @@ export function PipelinePage() {
 
   async function handleCreateLead(values: AddLeadFormValues) {
     if (!state.session) return;
-    const productLabel = values.supplierProductName ?? "Novo negócio";
 
     try {
-      const contact = mapContact(
-        await api.createContact({
-          name: values.name,
-          whatsapp: values.whatsapp,
-          origin: values.origin,
-          interests: [],
-          tags: [],
-          owner_id: values.ownerId,
-        }),
-      );
-      dispatch({ type: "ADD_CONTACT", contact });
-
-      let deal = mapDeal(
-        await api.createDeal({
-          contact_id: contact.id,
-          title: productLabel,
-          products: productLabel,
-          value: values.value,
-          payment: "pix",
-          trade_in: false,
-          owner_id: values.ownerId,
-        }),
-      );
-      dispatch({ type: "ADD_DEAL", deal });
-
-      if (values.supplierProductId) {
-        try {
-          deal = mapDeal(
-            await api.updateDealFinancials(deal.id, {
-              supplier_product_id: values.supplierProductId,
-              supplier_value: values.supplierValue ?? 0,
-              gift_value: 0,
-              freight_value: 0,
-            }),
-          );
-          dispatch({ type: "UPDATE_DEAL", deal });
-        } catch (financialsError) {
-          toast.error(
-            financialsError instanceof ApiError
-              ? `Lead criado, mas o custo do fornecedor não foi salvo: ${financialsError.message}`
-              : "Lead criado, mas o custo do fornecedor não foi salvo.",
-          );
-        }
-      }
-      // Fire-and-forget: a activity é só um registro informativo no
-      // histórico do cliente (ninguém lê state.activities pra renderizar
-      // nada — ActivityTimeline busca direto da API por contactId), então
-      // não precisa bloquear o fechamento do diálogo nem tratar erro aqui.
-      void api.createActivity({
-        contact_id: contact.id,
-        deal_id: deal.id,
-        type: "mudanca_estagio",
-        description: `Novo lead criado: ${productLabel}.`,
+      // Uma única ida-e-volta: /leads grava contact+deal+activity no
+      // servidor e devolve os dois na mesma resposta, em vez de 3 requests
+      // HTTP sequenciais do navegador (createContact -> createDeal ->
+      // updateDealFinancials).
+      const result = await api.createLead({
+        name: values.name,
+        whatsapp: values.whatsapp,
+        origin: values.origin,
+        value: values.value,
+        owner_id: values.ownerId,
+        supplier_product_id: values.supplierProductId,
+        supplier_value: values.supplierValue,
       });
+      const contact = mapContact(result.contact);
+      const deal = mapDeal(result.deal);
+      dispatch({ type: "ADD_CONTACT", contact });
+      dispatch({ type: "ADD_DEAL", deal });
       toast.success(`Lead ${contact.name} criado.`);
       setAddOpen(false);
     } catch (error) {

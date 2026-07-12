@@ -76,8 +76,9 @@ export type CrmAction =
   | { type: "ADD_SUPPLIER"; supplier: Supplier }
   | { type: "UPDATE_SUPPLIER"; supplier: Supplier }
   | { type: "ADD_SUPPLIER_PRODUCT"; product: SupplierProduct }
+  | { type: "ADD_SUPPLIER_PRODUCTS"; products: SupplierProduct[] }
   | { type: "UPDATE_SUPPLIER_PRODUCT_PRICE"; productId: string; price: number }
-  | { type: "UPDATE_SUPPLIER_PRODUCT"; productId: string; name: string; price: number }
+  | { type: "UPDATE_SUPPLIER_PRODUCT"; productId: string; name: string; price: number; colors?: string }
   | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; value: number; supplierProductId?: string; supplierValue: number; giftValue: number; freightValue: number }
   | { type: "ADD_ATTACHMENT"; attachment: Attachment }
   | { type: "REMOVE_ATTACHMENT"; attachmentId: string }
@@ -326,6 +327,10 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       return { ...state, supplierProducts: [...state.supplierProducts, action.product] };
     }
 
+    case "ADD_SUPPLIER_PRODUCTS": {
+      return { ...state, supplierProducts: [...state.supplierProducts, ...action.products] };
+    }
+
     case "UPDATE_SUPPLIER_PRODUCT_PRICE": {
       const product = state.supplierProducts.find((p) => p.id === action.productId);
       if (!product) return state;
@@ -354,7 +359,13 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
       const supplierProducts = state.supplierProducts.map((p) =>
         p.id === product.id
-          ? { ...p, name: action.name, currentPrice: action.price, updatedAt: priceChanged ? now : p.updatedAt }
+          ? {
+              ...p,
+              name: action.name,
+              currentPrice: action.price,
+              colors: action.colors,
+              updatedAt: priceChanged ? now : p.updatedAt,
+            }
           : p,
       );
 
@@ -446,20 +457,38 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
     case "ENTER_TENANT_AS_GESTOR": {
       // Só admin_saas pode "vestir" uma loja — mantém session.userId
       // (o próprio admin) pra EXIT_IMPERSONATION conseguir voltar depois.
+      // realRole grava o papel real ali mesmo na sessão (não só em
+      // state.users) pra EXIT_IMPERSONATION conseguir reverter mesmo se o
+      // perfil do admin sumir de state.users por algum motivo.
       if (!state.session || state.session.role !== "admin_saas") return state;
       return {
         ...state,
-        session: { ...state.session, role: "gestor", tenantId: action.tenantId, tenantName: action.tenantName },
+        session: {
+          ...state.session,
+          role: "gestor",
+          realRole: "admin_saas",
+          tenantId: action.tenantId,
+          tenantName: action.tenantName,
+        },
       };
     }
 
     case "EXIT_IMPERSONATION": {
-      // Restaura a sessão a partir do perfil real do admin em state.users —
-      // ENTER_TENANT_AS_GESTOR nunca altera esse registro, só state.session.
-      if (!state.session) return state;
+      // session.realRole (gravado por ENTER_TENANT_AS_GESTOR) é a fonte da
+      // verdade pra restaurar o papel — não depende de state.users conter o
+      // perfil do admin no momento do clique. state.users só é usado aqui
+      // como complemento pro tenantId (sempre "" pra admin_saas de qualquer
+      // forma, já que ele nunca tem vínculo de tenant).
+      if (!state.session || !state.session.realRole) return state;
       const realUser = state.users.find((u) => u.id === state.session!.userId);
-      if (!realUser) return state;
-      return { ...state, session: { userId: realUser.id, tenantId: realUser.tenantId ?? "", role: realUser.role } };
+      return {
+        ...state,
+        session: {
+          userId: state.session.userId,
+          tenantId: realUser?.tenantId ?? "",
+          role: state.session.realRole,
+        },
+      };
     }
 
     case "SET_REMOTE_DATA": {

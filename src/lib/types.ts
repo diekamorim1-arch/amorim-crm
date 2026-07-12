@@ -76,6 +76,7 @@ export interface SupplierProduct {
   supplierId: string;
   name: string;
   currentPrice: number;
+  colors?: string;
   updatedAt: string;
   createdAt: string;
 }
@@ -197,6 +198,13 @@ export interface Session {
    * populado numa sessão real, então o nome vem direto da resposta de
    * POST /tenants/{id}/impersonate em vez de um lookup em state.tenants. */
   tenantName?: string;
+  /** Role real do admin_saas enquanto ele está "vestindo" um tenant via
+   * Entrar como gestor (ENTER_TENANT_AS_GESTOR). Undefined fora de
+   * impersonação. Gravado direto na sessão (em vez de derivado de um
+   * lookup em state.users a cada render) pra EXIT_IMPERSONATION e
+   * isImpersonating() nunca falharem silenciosamente se o perfil do admin
+   * não estiver (ou deixar de estar) em state.users. */
+  realRole?: Role;
 }
 
 export interface CrmState {

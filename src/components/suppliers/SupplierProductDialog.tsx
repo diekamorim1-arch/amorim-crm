@@ -33,10 +33,11 @@ interface SupplierProductDialogProps {
 
 const EMPTY_ERRORS = { name: "", price: "" };
 
-function valuesFromProduct(product: SupplierProduct | undefined): { name: string; price: string } {
+function valuesFromProduct(product: SupplierProduct | undefined): { name: string; price: string; colors: string } {
   return {
     name: product?.name ?? "",
     price: product ? String(product.currentPrice) : "",
+    colors: product?.colors ?? "",
   };
 }
 
@@ -45,6 +46,7 @@ export function SupplierProductDialog({ supplierId, product, open, onOpenChange 
 
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [colors, setColors] = useState("");
   const [errors, setErrors] = useState(EMPTY_ERRORS);
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,6 +57,7 @@ export function SupplierProductDialog({ supplierId, product, open, onOpenChange 
       const values = valuesFromProduct(product);
       setName(values.name);
       setPrice(values.price);
+      setColors(values.colors);
       setErrors(EMPTY_ERRORS);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,17 +80,32 @@ export function SupplierProductDialog({ supplierId, product, open, onOpenChange 
 
     setSubmitting(true);
     try {
+      const trimmedColors = colors.trim() || undefined;
       if (isEdit && product) {
-        await api.updateSupplierProduct(product.id, { name: name.trim(), current_price: parsedPrice });
+        await api.updateSupplierProduct(product.id, {
+          name: name.trim(),
+          current_price: parsedPrice,
+          colors: trimmedColors,
+        });
         // Mesma regra do backend (app/modules/suppliers/service.py::
         // update_product): só registra uma SupplierPriceChange quando o
         // preço realmente muda — reaproveita a lógica local já existente no
         // reducer em vez de duplicar via um objeto completo da API.
-        dispatch({ type: "UPDATE_SUPPLIER_PRODUCT", productId: product.id, name: name.trim(), price: parsedPrice });
+        dispatch({
+          type: "UPDATE_SUPPLIER_PRODUCT",
+          productId: product.id,
+          name: name.trim(),
+          price: parsedPrice,
+          colors: trimmedColors,
+        });
         toast.success(`Produto ${name.trim()} atualizado.`);
       } else {
         const created = mapSupplierProduct(
-          await api.createSupplierProduct(supplierId, { name: name.trim(), current_price: parsedPrice }),
+          await api.createSupplierProduct(supplierId, {
+            name: name.trim(),
+            current_price: parsedPrice,
+            colors: trimmedColors,
+          }),
         );
         dispatch({ type: "ADD_SUPPLIER_PRODUCT", product: created });
         toast.success(`Produto ${created.name} adicionado.`);
@@ -139,6 +157,16 @@ export function SupplierProductDialog({ supplierId, product, open, onOpenChange 
               className="font-mono tabular-nums"
             />
             {errors.price && <p className="text-xs text-destructive">{errors.price}</p>}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="product-colors">Cores</Label>
+            <Input
+              id="product-colors"
+              value={colors}
+              onChange={(event) => setColors(event.target.value)}
+              placeholder="Ex.: Preto, Branco, Azul"
+            />
           </div>
 
           <DialogFooter>

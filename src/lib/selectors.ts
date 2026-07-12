@@ -84,17 +84,31 @@ export function tenantScope(state: CrmState): {
 export function currentUser(state: CrmState): User | null {
   if (!state.session) return null;
   const user = state.users.find((u) => u.id === state.session!.userId);
-  if (!user) return null;
-  return user.role === state.session.role ? user : { ...user, role: state.session.role };
+  if (user) {
+    return user.role === state.session.role ? user : { ...user, role: state.session.role };
+  }
+  // Fallback: sem isso, um state.users fora de sincronia faz o menu da
+  // conta (SessionSwitcher, com o botão "Sair") sumir por completo da
+  // Topbar — um perfil mínimo mantém a conta acessível mesmo sem o
+  // registro completo carregado.
+  return {
+    id: state.session.userId,
+    tenantId: state.session.tenantId || null,
+    name: "Minha conta",
+    email: "",
+    role: state.session.role,
+    avatarColor: "#6b7280",
+    createdAt: new Date().toISOString(),
+    isActive: true,
+  };
 }
 
 /** true quando a sessão atual é um admin_saas "vestindo" o papel de gestor
- * de uma loja via Entrar como gestor — detectado comparando o role real do
- * perfil (state.users, nunca sobrescrito) com o role efetivo da sessão. */
+ * de uma loja via Entrar como gestor. session.realRole é gravado direto por
+ * ENTER_TENANT_AS_GESTOR/EXIT_IMPERSONATION (ver store.tsx) — não depende de
+ * um lookup em state.users, que pode estar fora de sincronia. */
 export function isImpersonating(state: CrmState): boolean {
-  if (!state.session) return false;
-  const realUser = state.users.find((u) => u.id === state.session!.userId);
-  return realUser?.role === "admin_saas" && state.session.role === "gestor";
+  return state.session?.realRole === "admin_saas";
 }
 
 /** Usuários elegíveis pra "Responsável" nos formulários de lead/cliente/
