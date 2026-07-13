@@ -60,6 +60,10 @@ export function DashboardPage() {
   // ida-e-volta de rede.
   const [monthDetailCache, setMonthDetailCache] = useState<Record<string, MonthlyDetailRow[]>>({});
 
+  function refreshMonthlyHistory() {
+    return api.getMonthlyHistory().then((rows) => setRemoteHistory(rows.map(mapMonthlyHistoryItem)));
+  }
+
   useEffect(() => {
     let active = true;
     api.getMonthlyHistory().then((rows) => {
@@ -109,6 +113,11 @@ export function DashboardPage() {
       await api.deleteDeal(dealId);
       dispatch({ type: "REMOVE_DEAL", dealId });
       removeDealFromCache(dealId);
+      // A atualização otimista acima não muda dataVersion (só
+      // refreshCrmData() muda), então sem isto a tabela-resumo do
+      // histórico (receita/lucro do mês) ficava com o valor antigo até um
+      // F5 forçar a busca inicial de novo.
+      refreshMonthlyHistory();
       toast.success("Negócio excluído.");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao excluir negócio.");
@@ -125,6 +134,9 @@ export function DashboardPage() {
     if (deal) {
       dispatch({ type: "UPDATE_DEAL", deal: { ...deal, stageChangedAt: nextStageChangedAt } });
     }
+    // Mover muda a qual mês o negócio pertence — a tabela-resumo (receita,
+    // lucro de cada mês) precisa refletir isso sem esperar um F5.
+    refreshMonthlyHistory();
     toast.success("Negócio movido de mês.");
   }
 
@@ -160,6 +172,7 @@ export function DashboardPage() {
           value={String(metrics.newLeadsMonth)}
           valueClassName="font-display"
           onClick={() => setNewLeadsOpen(true)}
+          hint="Conta os clientes cadastrados no mês (não os negócios) — continua igual mesmo se um negócio associado for excluído ou movido de mês depois."
         />
         <MetricCard
           label="Clientes que compraram no mês"

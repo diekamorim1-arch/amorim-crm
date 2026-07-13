@@ -7,9 +7,10 @@
 // Quando `onClick` é passado, o card vira um botão (drill-down) — usado pelos
 // cards "Leads novos no mês" e "Clientes que compraram no mês" no Dashboard.
 
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Info } from "lucide-react";
 
 import { CardHeader, CardContent } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface MetricCardDelta {
@@ -27,11 +28,15 @@ interface MetricCardProps {
   delta?: MetricCardDelta;
   /** Quando presente, o card vira um botão (drill-down) — hover/focus visíveis. */
   onClick?: () => void;
+  /** Nota curta explicando a definição da métrica — mostrada num tooltip no
+   * ícone ao lado do rótulo. Usado onde a definição não é óbvia à primeira
+   * vista (ex.: "Leads novos" conta contatos, não negócios). */
+  hint?: string;
 }
 
 const CARD_CLASSES = "flex flex-col gap-3 rounded-xl border bg-card py-5 text-card-foreground shadow-sm w-full";
 
-export function MetricCard({ label, value, valueClassName, delta, onClick }: MetricCardProps) {
+export function MetricCard({ label, value, valueClassName, delta, onClick, hint }: MetricCardProps) {
   const hasDelta = delta !== undefined;
   const isUp = hasDelta && delta.pct > 0;
   const isDown = hasDelta && delta.pct < 0;
@@ -39,7 +44,27 @@ export function MetricCard({ label, value, valueClassName, delta, onClick }: Met
   const body = (
     <>
       <CardHeader className="px-5">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm text-muted-foreground">{label}</p>
+          {hint && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    // Impede que o clique no ícone dispare o onClick do card
+                    // (drill-down) quando o MetricCard também é um botão.
+                    onClick={(event) => event.stopPropagation()}
+                    tabIndex={0}
+                    className="text-muted-foreground/70 outline-none hover:text-muted-foreground focus-visible:text-foreground"
+                  >
+                    <Info className="size-3.5" aria-label={hint} />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-64">{hint}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-1.5 px-5">
         <p className={cn("text-2xl font-semibold tracking-tight text-foreground", valueClassName)}>{value}</p>
