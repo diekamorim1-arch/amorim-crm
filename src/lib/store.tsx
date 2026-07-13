@@ -75,6 +75,7 @@ export type CrmAction =
   | { type: "REMOVE_USER"; userId: string }
   | { type: "ADD_SUPPLIER"; supplier: Supplier }
   | { type: "UPDATE_SUPPLIER"; supplier: Supplier }
+  | { type: "REMOVE_SUPPLIER"; supplierId: string }
   | { type: "ADD_SUPPLIER_PRODUCT"; product: SupplierProduct }
   | { type: "ADD_SUPPLIER_PRODUCTS"; products: SupplierProduct[] }
   | { type: "UPDATE_SUPPLIER_PRODUCT_PRICE"; productId: string; price: number }
@@ -322,6 +323,26 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
     case "UPDATE_SUPPLIER": {
       return { ...state, suppliers: state.suppliers.map((s) => (s.id === action.supplier.id ? action.supplier : s)) };
+    }
+
+    case "REMOVE_SUPPLIER": {
+      const removedProductIds = new Set(
+        state.supplierProducts.filter((p) => p.supplierId === action.supplierId).map((p) => p.id),
+      );
+      return {
+        ...state,
+        suppliers: state.suppliers.filter((s) => s.id !== action.supplierId),
+        supplierProducts: state.supplierProducts.filter((p) => p.supplierId !== action.supplierId),
+        supplierPriceChanges: state.supplierPriceChanges.filter((c) => !removedProductIds.has(c.supplierProductId)),
+        // Mesma regra do delete_supplier no backend: deals que referenciavam
+        // um produto deste fornecedor só perdem o vínculo, o negócio em si
+        // (e o valor financeiro já gravado nele) continua existindo.
+        deals: state.deals.map((d) =>
+          d.supplierProductId && removedProductIds.has(d.supplierProductId)
+            ? { ...d, supplierProductId: undefined }
+            : d,
+        ),
+      };
     }
 
     case "ADD_SUPPLIER_PRODUCT": {

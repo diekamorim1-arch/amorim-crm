@@ -646,6 +646,7 @@ export const api = {
     id: string,
     body: Partial<{ name: string; whatsapp: string; contact_name: string; email: string; notes: string }>,
   ) => request<ApiSupplier>(`/api/v1/suppliers/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteSupplier: (id: string) => request<{ status: string }>(`/api/v1/suppliers/${id}`, { method: "DELETE" }),
   listSupplierProducts: (supplierId: string) =>
     request<ApiSupplierProduct[]>(`/api/v1/suppliers/${supplierId}/products`),
   createSupplierProduct: (supplierId: string, body: { name: string; current_price: number; colors?: string }) =>

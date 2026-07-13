@@ -403,6 +403,28 @@ describe("crmReducer — fornecedores e custos", () => {
     expect(next.supplierPriceChanges).toHaveLength(0);
     expect(next.deals.find((d) => d.id === dealId)?.supplierProductId).toBeUndefined();
   });
+
+  it("REMOVE_SUPPLIER remove o fornecedor, seus produtos, o histórico de preço deles, e desvincula deals", () => {
+    const { state, supplier, product } = stateWithSupplier();
+    const dealId = state.deals[0].id;
+    const withLink: CrmState = {
+      ...state,
+      deals: state.deals.map((d) => (d.id === dealId ? { ...d, supplierProductId: product.id } : d)),
+      supplierPriceChanges: [
+        {
+          id: "pricechg_1", tenantId: product.tenantId, supplierProductId: product.id,
+          price: product.currentPrice, changedAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    const next = crmReducer(withLink, { type: "REMOVE_SUPPLIER", supplierId: supplier.id });
+
+    expect(next.suppliers.find((s) => s.id === supplier.id)).toBeUndefined();
+    expect(next.supplierProducts.find((p) => p.id === product.id)).toBeUndefined();
+    expect(next.supplierPriceChanges).toHaveLength(0);
+    expect(next.deals.find((d) => d.id === dealId)?.supplierProductId).toBeUndefined();
+  });
 });
 
 describe("crmReducer — anexos", () => {

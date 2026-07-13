@@ -4,7 +4,7 @@
 // "Ver histórico" fica disponível para todos os papéis.
 
 import { useState } from "react";
-import { Navigate, useParams } from "react-router";
+import { Navigate, useNavigate, useParams } from "react-router";
 import { History, Package, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,6 +34,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 export function SupplierDetailPage() {
   const { supplierId } = useParams<{ supplierId: string }>();
   const { state, dispatch } = useCrm();
+  const navigate = useNavigate();
   const me = currentUser(state);
   const isGestor = me?.role === "gestor";
 
@@ -45,6 +46,8 @@ export function SupplierDetailPage() {
   const [historyProduct, setHistoryProduct] = useState<SupplierProduct | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<SupplierProduct | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deletingSupplierOpen, setDeletingSupplierOpen] = useState(false);
+  const [deletingSupplier, setDeletingSupplier] = useState(false);
 
   async function handleConfirmDeleteProduct() {
     const product = deletingProduct;
@@ -60,6 +63,22 @@ export function SupplierDetailPage() {
       toast.error(error instanceof ApiError ? error.message : "Erro ao excluir produto.");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleConfirmDeleteSupplier() {
+    if (!supplierId) return;
+
+    setDeletingSupplier(true);
+    try {
+      await api.deleteSupplier(supplierId);
+      dispatch({ type: "REMOVE_SUPPLIER", supplierId });
+      toast.success("Fornecedor excluído.");
+      navigate("/fornecedores");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao excluir fornecedor.");
+    } finally {
+      setDeletingSupplier(false);
     }
   }
 
@@ -88,10 +107,20 @@ export function SupplierDetailPage() {
         </div>
 
         {isGestor && (
-          <Button onClick={() => setEditOpen(true)}>
-            <Pencil />
-            Editar
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setEditOpen(true)}>
+              <Pencil />
+              Editar
+            </Button>
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setDeletingSupplierOpen(true)}
+            >
+              <Trash2 />
+              Excluir fornecedor
+            </Button>
+          </div>
         )}
       </div>
 
@@ -195,6 +224,14 @@ export function SupplierDetailPage() {
         deleting={deleting}
         title={`Excluir ${deletingProduct?.name}?`}
         description="Essa ação não pode ser desfeita. Também apaga o histórico de preço deste produto — negócios que já referenciam este produto continuam existindo, só deixam de apontar pra ele."
+      />
+      <ConfirmDeleteDialog
+        open={deletingSupplierOpen}
+        onOpenChange={setDeletingSupplierOpen}
+        onConfirm={handleConfirmDeleteSupplier}
+        deleting={deletingSupplier}
+        title={`Excluir ${supplier.name}?`}
+        description="Essa ação não pode ser desfeita. Apaga também todos os produtos e o histórico de preço deste fornecedor — negócios que já referenciam um desses produtos continuam existindo, só deixam de apontar pra ele."
       />
     </div>
   );
