@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { FileText, Paperclip, Trash2 } from "lucide-react";
 
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -30,6 +31,8 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
   const [error, setError] = useState("");
   const [remoteAttachments, setRemoteAttachments] = useState<Attachment[]>([]);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [deletingAttachment, setDeletingAttachment] = useState<Attachment | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -69,13 +72,20 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
     }
   }
 
-  async function handleRemove(attachment: Attachment) {
+  async function handleConfirmRemove() {
+    const attachment = deletingAttachment;
+    if (!attachment) return;
+
+    setDeleting(true);
     try {
       await api.deleteAttachment(attachment.id);
       setRemoteAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
       toast.success(`Comprovante ${attachment.fileName} removido.`);
+      setDeletingAttachment(null);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao remover comprovante.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -135,7 +145,7 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
                 variant="ghost"
                 size="icon-xs"
                 aria-label="Remover comprovante"
-                onClick={() => handleRemove(attachment)}
+                onClick={() => setDeletingAttachment(attachment)}
               >
                 <Trash2 />
               </Button>
@@ -152,6 +162,15 @@ export function AttachmentsTab({ contactId }: AttachmentsTabProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog
+        open={!!deletingAttachment}
+        onOpenChange={(open) => !open && setDeletingAttachment(null)}
+        onConfirm={handleConfirmRemove}
+        deleting={deleting}
+        title={`Remover ${deletingAttachment?.fileName}?`}
+        description="Essa ação não pode ser desfeita. O comprovante é apagado do armazenamento e não pode ser recuperado depois."
+      />
     </div>
   );
 }

@@ -483,6 +483,7 @@ export interface ApiMonthlyDealDetail {
   gift_value: number;
   freight_value: number;
   net_profit: number;
+  stage_changed_at: string;
 }
 
 export interface MonthlyDealDetail {
@@ -495,6 +496,7 @@ export interface MonthlyDealDetail {
   giftValue: number;
   freightValue: number;
   netProfit: number;
+  stageChangedAt: string;
 }
 
 export function mapMonthlyDealDetail(api: ApiMonthlyDealDetail): MonthlyDealDetail {
@@ -508,6 +510,7 @@ export function mapMonthlyDealDetail(api: ApiMonthlyDealDetail): MonthlyDealDeta
     giftValue: api.gift_value,
     freightValue: api.freight_value,
     netProfit: api.net_profit,
+    stageChangedAt: api.stage_changed_at,
   };
 }
 
@@ -526,6 +529,13 @@ export interface ApiTenant {
 export interface ImpersonateResponse {
   tenant_id: string;
   tenant_name: string;
+}
+
+export interface TenantDeletionSummary {
+  contacts: number;
+  deals: number;
+  suppliers: number;
+  users: number;
 }
 
 export function mapTenant(api: ApiTenant): Tenant {
@@ -609,7 +619,10 @@ export const api = {
   createLead: (body: LeadPayload) =>
     request<{ contact: ApiContact; deal: ApiDeal }>("/api/v1/leads", { method: "POST", body: JSON.stringify(body) }),
   createDeal: (body: DealPayload) => request<ApiDeal>("/api/v1/deals", { method: "POST", body: JSON.stringify(body) }),
-  updateDeal: (id: string, body: Partial<{ title: string; products: string; value: number; payment: string }>) =>
+  updateDeal: (
+    id: string,
+    body: Partial<{ title: string; products: string; value: number; payment: string; stage_changed_at: string }>,
+  ) =>
     request<ApiDeal>(`/api/v1/deals/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteDeal: (id: string) => request<void>(`/api/v1/deals/${id}`, { method: "DELETE" }),
   moveDeal: (id: string, stage: string) =>
@@ -650,6 +663,8 @@ export const api = {
     }),
   updateSupplierProduct: (id: string, body: Partial<{ name: string; current_price: number; colors: string }>) =>
     request<ApiSupplierProduct>(`/api/v1/supplier-products/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteSupplierProduct: (id: string) =>
+    request<{ status: string }>(`/api/v1/supplier-products/${id}`, { method: "DELETE" }),
   updateSupplierProductPrice: (id: string, price: number) =>
     request<ApiSupplierProduct>(`/api/v1/supplier-products/${id}/price`, {
       method: "PATCH",
@@ -723,6 +738,8 @@ export const api = {
     }),
   impersonateTenant: (tenantId: string) =>
     request<ImpersonateResponse>(`/api/v1/tenants/${tenantId}/impersonate`, { method: "POST" }),
+  getTenantDeletionSummary: (tenantId: string) =>
+    request<TenantDeletionSummary>(`/api/v1/tenants/${tenantId}/deletion-summary`),
   deleteTenant: (tenantId: string) => request<void>(`/api/v1/tenants/${tenantId}`, { method: "DELETE" }),
 
   listAdminUsers: () => request<ApiAdminUser[]>("/api/v1/admin/users"),

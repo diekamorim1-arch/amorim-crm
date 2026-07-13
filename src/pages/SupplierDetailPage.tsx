@@ -5,8 +5,10 @@
 
 import { useState } from "react";
 import { Navigate, useParams } from "react-router";
-import { History, Package, Pencil, Plus, Upload } from "lucide-react";
+import { History, Package, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { toast } from "sonner";
 
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { EditPriceDialog } from "@/components/suppliers/EditPriceDialog";
 import { ImportProductsDialog } from "@/components/suppliers/ImportProductsDialog";
@@ -14,6 +16,7 @@ import { PriceHistorySheet } from "@/components/suppliers/PriceHistorySheet";
 import { SupplierFormDialog } from "@/components/suppliers/SupplierFormDialog";
 import { SupplierProductDialog } from "@/components/suppliers/SupplierProductDialog";
 import { Button } from "@/components/ui/button";
+import { ApiError, api } from "@/lib/apiClient";
 import { currentUser, tenantScope } from "@/lib/selectors";
 import { brl, relativeTime } from "@/lib/format";
 import { useCrm } from "@/lib/store";
@@ -30,7 +33,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 export function SupplierDetailPage() {
   const { supplierId } = useParams<{ supplierId: string }>();
-  const { state } = useCrm();
+  const { state, dispatch } = useCrm();
   const me = currentUser(state);
   const isGestor = me?.role === "gestor";
 
@@ -40,6 +43,25 @@ export function SupplierDetailPage() {
   const [editProduct, setEditProduct] = useState<SupplierProduct | null>(null);
   const [priceProduct, setPriceProduct] = useState<SupplierProduct | null>(null);
   const [historyProduct, setHistoryProduct] = useState<SupplierProduct | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<SupplierProduct | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirmDeleteProduct() {
+    const product = deletingProduct;
+    if (!product) return;
+
+    setDeleting(true);
+    try {
+      await api.deleteSupplierProduct(product.id);
+      dispatch({ type: "REMOVE_SUPPLIER_PRODUCT", productId: product.id });
+      toast.success(`Produto ${product.name} excluído.`);
+      setDeletingProduct(null);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao excluir produto.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const { suppliers, supplierProducts } = tenantScope(state);
   const supplier = supplierId ? suppliers.find((s) => s.id === supplierId) : undefined;
@@ -132,6 +154,17 @@ export function SupplierDetailPage() {
                       <History />
                       Ver histórico
                     </Button>
+                    {isGestor && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Excluir produto"
+                        onClick={() => setDeletingProduct(product)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -154,6 +187,14 @@ export function SupplierDetailPage() {
         product={historyProduct}
         open={!!historyProduct}
         onOpenChange={(o) => !o && setHistoryProduct(null)}
+      />
+      <ConfirmDeleteDialog
+        open={!!deletingProduct}
+        onOpenChange={(o) => !o && setDeletingProduct(null)}
+        onConfirm={handleConfirmDeleteProduct}
+        deleting={deleting}
+        title={`Excluir ${deletingProduct?.name}?`}
+        description="Essa ação não pode ser desfeita. Também apaga o histórico de preço deste produto — negócios que já referenciam este produto continuam existindo, só deixam de apontar pra ele."
       />
     </div>
   );

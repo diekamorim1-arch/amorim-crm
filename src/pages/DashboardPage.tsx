@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { CalendarX } from "lucide-react";
+import { toast } from "sonner";
 
 import { EmptyState } from "@/components/EmptyState";
 import { ChannelTable } from "@/components/dashboard/ChannelTable";
@@ -16,13 +17,14 @@ import { LossRanking } from "@/components/dashboard/LossRanking";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { MonthlyDetailSheet, type MonthlyDetailRow } from "@/components/dashboard/MonthlyDetailSheet";
 import { MonthlyHistoryTable } from "@/components/dashboard/MonthlyHistoryTable";
+import { MoveDealMonthDialog } from "@/components/dashboard/MoveDealMonthDialog";
 import { NewLeadsSheet } from "@/components/dashboard/NewLeadsSheet";
 import { EditDealDialog } from "@/components/pipeline/EditDealDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatHourMinute, isSameDay } from "@/components/agenda/weekGridMath";
-import { api, mapMonthlyDealDetail, mapMonthlyHistoryItem, type MonthlyHistoryItem } from "@/lib/apiClient";
+import { ApiError, api, mapMonthlyDealDetail, mapMonthlyHistoryItem, type MonthlyHistoryItem } from "@/lib/apiClient";
 import { APPOINTMENT_TYPE_LABELS, STAGE_LABELS } from "@/lib/constants";
 import { brl } from "@/lib/format";
 import {
@@ -43,16 +45,20 @@ function computeDelta(current: number, previous: number): { pct: number; label: 
 }
 
 export function DashboardPage() {
-  const { state, dataVersion } = useCrm();
+  const { state, dispatch, dataVersion } = useCrm();
   const navigate = useNavigate();
 
   const [newLeadsOpen, setNewLeadsOpen] = useState(false);
   const [customersWonOpen, setCustomersWonOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<{ key: string; label: string } | null>(null);
   const [editingDealId, setEditingDealId] = useState<string | null>(null);
+  const [movingRow, setMovingRow] = useState<MonthlyDetailRow | null>(null);
 
   const [remoteHistory, setRemoteHistory] = useState<MonthlyHistoryItem[]>([]);
-  const [remoteDetailRows, setRemoteDetailRows] = useState<MonthlyDetailRow[]>([]);
+  // Cache por mês (chave "YYYY-MM"): reabrir um mês já visto nesta sessão não
+  // rebusca get_monthly_detail — só o primeiro clique em cada mês paga a
+  // ida-e-volta de rede.
+  const [monthDetailCache, setMonthDetailCache] = useState<Record<string, MonthlyDetailRow[]>>({});
 
   useEffect(() => {
     let active = true;
@@ -64,17 +70,63 @@ export function DashboardPage() {
     };
   }, [dataVersion]);
 
+  // dataVersion muda a cada refreshCrmData() bem-sucedido — os meses já
+  // cacheados podem estar desatualizados nesse momento (uma mutação em
+  // qualquer negócio ganho pode ter mudado o mês de origem dele), então o
+  // cache é limpo aqui em vez de confiar em dados potencialmente stale.
   useEffect(() => {
-    if (!selectedMonth) return;
+    setMonthDetailCache({});
+  }, [dataVersion]);
+
+  useEffect(() => {
+    if (!selectedMonth || monthDetailCache[selectedMonth.key]) return;
     const [year, month] = selectedMonth.key.split("-").map(Number);
+    const monthKey = selectedMonth.key;
     let active = true;
     api.getMonthlyDetail(year, month).then((rows) => {
-      if (active) setRemoteDetailRows(rows.map(mapMonthlyDealDetail));
+      if (active) {
+        setMonthDetailCache((prev) => ({ ...prev, [monthKey]: rows.map(mapMonthlyDealDetail) }));
+      }
     });
     return () => {
       active = false;
     };
-  }, [selectedMonth, dataVersion]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth]);
+
+  function removeDealFromCache(dealId: string) {
+    setMonthDetailCache((prev) => {
+      const next: typeof prev = {};
+      for (const [key, rows] of Object.entries(prev)) {
+        next[key] = rows.filter((r) => r.dealId !== dealId);
+      }
+      return next;
+    });
+  }
+
+  async function handleDeleteMonthlyDeal(dealId: string) {
+    try {
+      await api.deleteDeal(dealId);
+      dispatch({ type: "REMOVE_DEAL", dealId });
+      removeDealFromCache(dealId);
+      toast.success("Negócio excluído.");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao excluir negócio.");
+      throw error;
+    }
+  }
+
+  function handleMovedDeal(dealId: string, nextStageChangedAt: string) {
+    // O negócio deixou de pertencer ao mês aberto — some de qualquer mês
+    // cacheado, e state.deals é atualizado pra manter Pipeline/outras telas
+    // coerentes.
+    removeDealFromCache(dealId);
+    const deal = state.deals.find((d) => d.id === dealId);
+    if (deal) {
+      dispatch({ type: "UPDATE_DEAL", deal: { ...deal, stageChangedAt: nextStageChangedAt } });
+    }
+    toast.success("Negócio movido de mês.");
+  }
 
   const metrics = dashboardMetrics(state);
   const { conversations, appointments, contacts } = tenantScope(state);
@@ -91,7 +143,7 @@ export function DashboardPage() {
   const newLeads = newLeadsThisMonth(state);
   const customersWon = customersWonThisMonth(state);
   const history = remoteHistory;
-  const detailRows: MonthlyDetailRow[] = remoteDetailRows;
+  const detailRows: MonthlyDetailRow[] = selectedMonth ? (monthDetailCache[selectedMonth.key] ?? []) : [];
 
   const editingDeal: Deal | null = editingDealId ? (state.deals.find((d) => d.id === editingDealId) ?? null) : null;
 
@@ -235,11 +287,20 @@ export function DashboardPage() {
         month={selectedMonth?.label ?? ""}
         rows={detailRows}
         onEdit={setEditingDealId}
+        onMove={setMovingRow}
+        onDelete={handleDeleteMonthlyDeal}
       />
       <EditDealDialog
         deal={editingDeal}
         open={!!editingDealId}
         onOpenChange={(open) => !open && setEditingDealId(null)}
+      />
+      <MoveDealMonthDialog
+        dealId={movingRow?.dealId ?? null}
+        dealTitle={movingRow?.contactName ?? ""}
+        currentStageChangedAt={movingRow?.stageChangedAt ?? new Date().toISOString()}
+        onOpenChange={(open) => !open && setMovingRow(null)}
+        onMoved={handleMovedDeal}
       />
     </div>
   );

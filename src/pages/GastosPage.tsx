@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Download, Plus, Receipt, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +48,8 @@ export function GastosPage() {
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -119,13 +122,20 @@ export function GastosPage() {
     }
   }
 
-  async function handleRemove(expense: Expense) {
+  async function handleConfirmRemove() {
+    const expense = deletingExpense;
+    if (!expense) return;
+
+    setDeleting(true);
     try {
       await api.deleteExpense(expense.id);
       dispatch({ type: "REMOVE_EXPENSE", expenseId: expense.id });
       toast.success("Gasto removido.");
+      setDeletingExpense(null);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao remover gasto.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -201,7 +211,7 @@ export function GastosPage() {
                           variant="ghost"
                           size="icon-xs"
                           aria-label="Remover gasto"
-                          onClick={() => handleRemove(expense)}
+                          onClick={() => setDeletingExpense(expense)}
                         >
                           <Trash2 />
                         </Button>
@@ -270,6 +280,15 @@ export function GastosPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDeleteDialog
+        open={!!deletingExpense}
+        onOpenChange={(open) => !open && setDeletingExpense(null)}
+        onConfirm={handleConfirmRemove}
+        deleting={deleting}
+        title={`Remover gasto "${deletingExpense?.description}"?`}
+        description="Essa ação não pode ser desfeita."
+      />
     </div>
   );
 }

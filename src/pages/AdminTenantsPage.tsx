@@ -11,16 +11,7 @@ import { toast } from "sonner";
 
 import { AdminNav } from "@/components/admin/AdminNav";
 import { TenantFormDialog } from "@/components/admin/TenantFormDialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -32,11 +23,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ApiError, api, mapTenant } from "@/lib/apiClient";
+import { ApiError, api, mapTenant, type TenantDeletionSummary } from "@/lib/apiClient";
 import { PLAN_LABELS } from "@/lib/constants";
 import { relativeTime } from "@/lib/format";
 import { useCrm } from "@/lib/store";
 import type { Tenant } from "@/lib/types";
+
+function pt(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
 
 export function AdminTenantsPage() {
   const { dispatch, dataVersion } = useCrm();
@@ -46,6 +41,8 @@ export function AdminTenantsPage() {
   const [enteringTenantId, setEnteringTenantId] = useState<string | null>(null);
   const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deletionSummary, setDeletionSummary] = useState<TenantDeletionSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   function fetchRemoteTenants() {
     return api.listTenants().then((rows) => setTenants(rows.map(mapTenant)));
@@ -71,6 +68,21 @@ export function AdminTenantsPage() {
       active = false;
     };
   }, [dataVersion]);
+
+  async function handleRequestDelete(tenant: Tenant) {
+    setDeletingTenant(tenant);
+    setDeletionSummary(null);
+    setSummaryLoading(true);
+    try {
+      const summary = await api.getTenantDeletionSummary(tenant.id);
+      setDeletionSummary(summary);
+    } catch {
+      // Sem a contagem, o AlertDialog ainda mostra o aviso genérico de risco
+      // (ver description abaixo) — não bloqueia a exclusão por causa disso.
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
 
   async function handleConfirmDelete() {
     const tenant = deletingTenant;
@@ -195,7 +207,7 @@ export function AdminTenantsPage() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => setDeletingTenant(tenant)}
+                        onClick={() => handleRequestDelete(tenant)}
                         className="text-destructive hover:text-destructive"
                       >
                         Excluir
@@ -215,24 +227,30 @@ export function AdminTenantsPage() {
         onCreated={fetchRemoteTenants}
       />
 
-      <AlertDialog open={!!deletingTenant} onOpenChange={(open) => !open && setDeletingTenant(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir {deletingTenant?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Essa ação não pode ser desfeita. Se esta loja tiver clientes, negócios, fornecedores, WhatsApp
-              conectado ou mais de um usuário, a exclusão será bloqueada — suspenda a loja nesse caso, em vez de
-              excluir.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? "Excluindo…" : "Excluir"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={!!deletingTenant}
+        onOpenChange={(open) => !open && setDeletingTenant(null)}
+        onConfirm={handleConfirmDelete}
+        deleting={deleting}
+        title={`Excluir ${deletingTenant?.name}?`}
+        description={
+          summaryLoading ? (
+            "Verificando o que será apagado…"
+          ) : deletionSummary ? (
+            <>
+              Esta loja tem <strong>{pt(deletionSummary.contacts, "cliente", "clientes")}</strong>,{" "}
+              <strong>{pt(deletionSummary.deals, "negócio", "negócios")}</strong>,{" "}
+              <strong>{pt(deletionSummary.suppliers, "fornecedor", "fornecedores")}</strong> e{" "}
+              <strong>{pt(deletionSummary.users, "usuário", "usuários")}</strong> — excluir apaga tudo isso
+              PERMANENTEMENTE (inclusive histórico de preços, anexos, agendamentos e as contas de login da equipe).
+              Essa ação não pode ser desfeita.
+            </>
+          ) : (
+            "Essa ação não pode ser desfeita — todo o dado vinculado a esta loja (clientes, negócios, fornecedores, " +
+              "equipe) é apagado permanentemente."
+          )
+        }
+      />
     </div>
   );
 }

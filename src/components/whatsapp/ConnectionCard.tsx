@@ -7,16 +7,7 @@ import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 import { PairingDialog } from "./PairingDialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -134,24 +125,16 @@ export function ConnectionCard({ connection, ownerName, ownerAvatarColor, onChan
         onChanged={onChanged}
       />
 
-      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir conexão de {ownerName}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Isso desconecta o número da Evolution API e remove esta conexão. Depois de excluir, é possível cadastrar
-              um número novo (ou o mesmo de novo) e parear do zero — útil se o pareamento ficou travado ou o número
-              cadastrado estava errado.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? "Excluindo…" : "Excluir"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        onConfirm={handleConfirmDelete}
+        deleting={deleting}
+        title={`Excluir conexão de ${ownerName}?`}
+        description="Isso desconecta o número da Evolution API e remove esta conexão. Depois de excluir, é possível
+          cadastrar um número novo (ou o mesmo de novo) e parear do zero — útil se o pareamento ficou travado ou o
+          número cadastrado estava errado."
+      />
     </Card>
   );
 }

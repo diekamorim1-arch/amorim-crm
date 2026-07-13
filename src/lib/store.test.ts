@@ -362,6 +362,47 @@ describe("crmReducer — fornecedores e custos", () => {
     expect(next.supplierPriceChanges).toHaveLength(1);
     expect(next.supplierPriceChanges[0]).toMatchObject({ supplierProductId: product.id, price: 4100 });
   });
+
+  it("ADD_SUPPLIER_PRODUCTS adiciona vários produtos de uma vez (import em lote)", () => {
+    const { state } = stateWithSupplier();
+    const imported: SupplierProduct[] = [
+      {
+        id: "product_import_1", tenantId: state.tenants[0].id, supplierId: "supplier_1",
+        name: "iPhone 15 Pro", currentPrice: 6500, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+      },
+      {
+        id: "product_import_2", tenantId: state.tenants[0].id, supplierId: "supplier_1",
+        name: "AirPods Pro", currentPrice: 1800, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+      },
+    ];
+
+    const next = crmReducer(state, { type: "ADD_SUPPLIER_PRODUCTS", products: imported });
+    expect(next.supplierProducts).toHaveLength(3);
+    expect(next.supplierProducts.map((p) => p.id)).toEqual(
+      expect.arrayContaining(["product_import_1", "product_import_2"]),
+    );
+  });
+
+  it("REMOVE_SUPPLIER_PRODUCT remove o produto, o histórico de preço e desvincula deals que o referenciavam", () => {
+    const { state, product } = stateWithSupplier();
+    const dealId = state.deals[0].id;
+    const withLink: CrmState = {
+      ...state,
+      deals: state.deals.map((d) => (d.id === dealId ? { ...d, supplierProductId: product.id } : d)),
+      supplierPriceChanges: [
+        {
+          id: "pricechg_1", tenantId: product.tenantId, supplierProductId: product.id,
+          price: product.currentPrice, changedAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    const next = crmReducer(withLink, { type: "REMOVE_SUPPLIER_PRODUCT", productId: product.id });
+
+    expect(next.supplierProducts.find((p) => p.id === product.id)).toBeUndefined();
+    expect(next.supplierPriceChanges).toHaveLength(0);
+    expect(next.deals.find((d) => d.id === dealId)?.supplierProductId).toBeUndefined();
+  });
 });
 
 describe("crmReducer — anexos", () => {

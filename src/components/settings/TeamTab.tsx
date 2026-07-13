@@ -5,16 +5,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { EditUserDialog } from "@/components/settings/EditUserDialog";
 import { InviteUserDialog } from "@/components/settings/InviteUserDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -62,6 +53,7 @@ export function TeamTab({ users }: TeamTabProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const currentUserId = state.session?.userId;
 
@@ -93,14 +85,16 @@ export function TeamTab({ users }: TeamTabProps) {
     const user = deletingUser;
     if (!user) return;
 
+    setDeleting(true);
     try {
       await api.deleteUser(user.id);
       dispatch({ type: "REMOVE_USER", userId: user.id });
       toast.success(`${user.name} removido da equipe.`);
+      setDeletingUser(null);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Erro ao excluir usuário.");
     } finally {
-      setDeletingUser(null);
+      setDeleting(false);
     }
   }
 
@@ -201,21 +195,15 @@ export function TeamTab({ users }: TeamTabProps) {
         onOpenChange={(open) => !open && setEditingUser(null)}
       />
 
-      <AlertDialog open={!!deletingUser} onOpenChange={(open) => !open && setDeletingUser(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir {deletingUser?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Essa ação não pode ser desfeita. Se este usuário tiver clientes ou negócios atribuídos, a exclusão será
-              bloqueada — desative a conta nesse caso, em vez de excluir.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete}>Excluir</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={!!deletingUser}
+        onOpenChange={(open) => !open && setDeletingUser(null)}
+        onConfirm={handleConfirmDelete}
+        deleting={deleting}
+        title={`Excluir ${deletingUser?.name}?`}
+        description="Essa ação não pode ser desfeita. Se este usuário tiver clientes ou negócios atribuídos, a exclusão
+          será bloqueada — desative a conta nesse caso, em vez de excluir."
+      />
     </div>
   );
 }

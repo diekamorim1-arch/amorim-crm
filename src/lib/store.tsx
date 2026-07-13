@@ -79,6 +79,7 @@ export type CrmAction =
   | { type: "ADD_SUPPLIER_PRODUCTS"; products: SupplierProduct[] }
   | { type: "UPDATE_SUPPLIER_PRODUCT_PRICE"; productId: string; price: number }
   | { type: "UPDATE_SUPPLIER_PRODUCT"; productId: string; name: string; price: number; colors?: string }
+  | { type: "REMOVE_SUPPLIER_PRODUCT"; productId: string }
   | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; value: number; supplierProductId?: string; supplierValue: number; giftValue: number; freightValue: number }
   | { type: "ADD_ATTACHMENT"; attachment: Attachment }
   | { type: "REMOVE_ATTACHMENT"; attachmentId: string }
@@ -382,6 +383,18 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       };
 
       return { ...state, supplierProducts, supplierPriceChanges: [...state.supplierPriceChanges, priceChange] };
+    }
+
+    case "REMOVE_SUPPLIER_PRODUCT": {
+      return {
+        ...state,
+        supplierProducts: state.supplierProducts.filter((p) => p.id !== action.productId),
+        supplierPriceChanges: state.supplierPriceChanges.filter((c) => c.supplierProductId !== action.productId),
+        // deals.supplier_product_id vira null no backend quando o produto é
+        // excluído — reflete o mesmo desvínculo aqui, sem tocar no resto do
+        // negócio.
+        deals: state.deals.map((d) => (d.supplierProductId === action.productId ? { ...d, supplierProductId: undefined } : d)),
+      };
     }
 
     case "UPDATE_DEAL_FINANCIALS": {

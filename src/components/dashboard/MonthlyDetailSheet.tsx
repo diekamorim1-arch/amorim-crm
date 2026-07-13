@@ -1,13 +1,17 @@
 // MonthlyDetailSheet — drill-down de um mês do "Histórico mensal": lista os
 // negócios ganhos naquele mês (cliente, produto, venda/fornecedor/brindes/
-// frete/líquido, mesma fórmula do EditDealDialog) com um botão "Editar" por
-// linha que reabre o EditDealDialog já existente. Componente "burro": recebe
-// as linhas prontas (a página decide se vêm da API real ou dos selectors
-// locais) e só sabe emitir onEdit(dealId).
+// frete/líquido, mesma fórmula do EditDealDialog) com ações por linha:
+// "Editar" reabre o EditDealDialog já existente; "Mover mês" delega ao
+// MoveDealMonthDialog (via onMove) já que edita stage_changed_at, um campo
+// fora do escopo do EditDealDialog; "Excluir" chama api.deleteDeal (mesma
+// ação do Pipeline) com confirmação própria. Ainda "burro" no sentido de não
+// ter useCrm — mas dono do estado local de confirmação de exclusão.
 
+import { useState } from "react";
 import { Link } from "react-router";
-import { HandCoins } from "lucide-react";
+import { HandCoins, Trash2 } from "lucide-react";
 
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -25,6 +29,7 @@ export interface MonthlyDetailRow {
   giftValue: number;
   freightValue: number;
   netProfit: number;
+  stageChangedAt: string;
 }
 
 interface MonthlyDetailSheetProps {
@@ -33,9 +38,28 @@ interface MonthlyDetailSheetProps {
   month: string;
   rows: MonthlyDetailRow[];
   onEdit: (dealId: string) => void;
+  onMove: (row: MonthlyDetailRow) => void;
+  onDelete: (dealId: string) => Promise<void>;
 }
 
-export function MonthlyDetailSheet({ open, onOpenChange, month, rows, onEdit }: MonthlyDetailSheetProps) {
+export function MonthlyDetailSheet({ open, onOpenChange, month, rows, onEdit, onMove, onDelete }: MonthlyDetailSheetProps) {
+  const [deletingRow, setDeletingRow] = useState<MonthlyDetailRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirmDelete() {
+    if (!deletingRow) return;
+    setDeleting(true);
+    try {
+      await onDelete(deletingRow.dealId);
+      setDeletingRow(null);
+    } catch {
+      // onDelete já mostra o toast de erro — aqui só evita fechar o dialog
+      // pra pessoa poder tentar de novo.
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="sm:max-w-2xl">
@@ -59,7 +83,7 @@ export function MonthlyDetailSheet({ open, onOpenChange, month, rows, onEdit }: 
                     <TableHead className="text-right">Brindes</TableHead>
                     <TableHead className="text-right">Frete</TableHead>
                     <TableHead className="text-right">Líquido</TableHead>
-                    <TableHead className="w-16" />
+                    <TableHead className="w-40" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -95,9 +119,24 @@ export function MonthlyDetailSheet({ open, onOpenChange, month, rows, onEdit }: 
                         {brl(row.netProfit)}
                       </TableCell>
                       <TableCell>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(row.dealId)}>
-                          Editar
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(row.dealId)}>
+                            Editar
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => onMove(row)}>
+                            Mover mês
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Excluir negócio"
+                            onClick={() => setDeletingRow(row)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -107,6 +146,15 @@ export function MonthlyDetailSheet({ open, onOpenChange, month, rows, onEdit }: 
           )}
         </div>
       </SheetContent>
+
+      <ConfirmDeleteDialog
+        open={!!deletingRow}
+        onOpenChange={(o) => !o && setDeletingRow(null)}
+        onConfirm={handleConfirmDelete}
+        deleting={deleting}
+        title={`Excluir negócio de ${deletingRow?.contactName}?`}
+        description="Essa ação não pode ser desfeita. Apaga só este negócio — o cliente associado continua existindo."
+      />
     </Sheet>
   );
 }
