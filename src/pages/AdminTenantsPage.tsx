@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ApiError, api, mapTenant, type TenantDeletionSummary } from "@/lib/apiClient";
+import { ApiError, api, mapTenant, setImpersonatedTenantId, type TenantDeletionSummary } from "@/lib/apiClient";
 import { PLAN_LABELS } from "@/lib/constants";
 import { relativeTime } from "@/lib/format";
 import { useCrm } from "@/lib/store";
@@ -34,7 +34,7 @@ function pt(count: number, singular: string, plural: string): string {
 }
 
 export function AdminTenantsPage() {
-  const { dispatch, dataVersion } = useCrm();
+  const { dispatch, dataVersion, refreshCrmData } = useCrm();
   const navigate = useNavigate();
   const [formOpen, setFormOpen] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -52,7 +52,18 @@ export function AdminTenantsPage() {
     setEnteringTenantId(tenantId);
     try {
       const response = await api.impersonateTenant(tenantId);
+      // Sincrono e antes do dispatch: garante que a próxima chamada da API
+      // (dentro de refreshCrmData logo abaixo) já sai com o header
+      // X-Impersonate-Tenant certo, sem esperar o useEffect que também seta
+      // isso reagir à mudança de state.session (evita corrida de "primeira
+      // busca ainda usa o tenant errado").
+      setImpersonatedTenantId(response.tenant_id);
       dispatch({ type: "ENTER_TENANT_AS_GESTOR", tenantId: response.tenant_id, tenantName: response.tenant_name });
+      // Sem isso, a sessão do admin_saas nunca tem tenant (login inicial
+      // falha com "no_tenant"), então contacts/deals/appointments/users/
+      // suppliers ficam vazios em state — impersonar uma loja mostrava só o
+      // que fosse criado depois de entrar, nunca o dado já existente.
+      await refreshCrmData();
       navigate("/");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Não foi possível entrar na loja.");
