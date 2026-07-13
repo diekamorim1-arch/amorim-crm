@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { daysAgo } from "./format";
 import { crmReducer } from "./store";
 import { currentUser, dashboardMetrics, dealsByStage, isImpersonating, isStale, lostDeals, priceHistoryForProduct } from "./selectors";
-import type { Attachment, Contact, Conversation, CrmState, Deal, Expense, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
+import type { Appointment, Attachment, Contact, Conversation, CrmState, Deal, Expense, Message, Supplier, SupplierPriceChange, SupplierProduct, Tenant, User } from "./types";
 
 function baseState(): CrmState {
   const now = new Date().toISOString();
@@ -166,6 +166,54 @@ describe("crmReducer — REMOVE_DEAL", () => {
   });
 });
 
+describe("crmReducer — REMOVE_CONTACT", () => {
+  it("remove o contato, seus deals/agendamentos/atividades/anexos/conversas/mensagens, sem tocar em outro contato", () => {
+    const state = baseState();
+    const now = new Date().toISOString();
+    const otherContact: Contact = { ...state.contacts[0], id: "contact_2" };
+    const otherDeal: Deal = { ...state.deals[0], id: "deal_2", contactId: "contact_2" };
+
+    const withData: CrmState = {
+      ...state,
+      contacts: [...state.contacts, otherContact],
+      deals: [...state.deals, otherDeal],
+      appointments: [
+        {
+          id: "appt_1", tenantId: state.tenants[0].id, contactId: "contact_1", dealId: "deal_1",
+          type: "atendimento", startsAt: now, endsAt: now, status: "agendado", ownerId: state.users[0].id, createdAt: now,
+        },
+      ],
+      activities: [
+        {
+          id: "activity_1", tenantId: state.tenants[0].id, contactId: "contact_1", dealId: "deal_1",
+          userId: state.users[0].id, type: "mensagem", description: "Nota", createdAt: now,
+        },
+      ],
+      attachments: [
+        {
+          id: "att_1", tenantId: state.tenants[0].id, contactId: "contact_1", dealId: "deal_1",
+          fileName: "comprovante.png", fileType: "image/png", dataUrl: "data:,", uploadedBy: state.users[0].id, uploadedAt: now,
+        },
+      ],
+      messages: [
+        { id: "msg_1", tenantId: state.tenants[0].id, conversationId: "conv_1", direction: "in", text: "Oi", status: "lida", createdAt: now },
+      ],
+    };
+
+    const next = crmReducer(withData, { type: "REMOVE_CONTACT", contactId: "contact_1" });
+
+    expect(next.contacts.find((c) => c.id === "contact_1")).toBeUndefined();
+    expect(next.contacts.find((c) => c.id === "contact_2")).toEqual(otherContact);
+    expect(next.deals.find((d) => d.id === "deal_1")).toBeUndefined();
+    expect(next.deals.find((d) => d.id === "deal_2")).toEqual(otherDeal);
+    expect(next.appointments).toHaveLength(0);
+    expect(next.activities).toHaveLength(0);
+    expect(next.attachments).toHaveLength(0);
+    expect(next.conversations.find((c) => c.id === "conv_1")).toBeUndefined();
+    expect(next.messages).toHaveLength(0);
+  });
+});
+
 describe("crmReducer — MARK_DEAL_LOST", () => {
   it("exige reason, marca outcome perdido e o deal some do board mas aparece em lostDeals", () => {
     const state = baseState();
@@ -181,43 +229,6 @@ describe("crmReducer — MARK_DEAL_LOST", () => {
   });
 });
 
-describe("crmReducer — mensagens", () => {
-  it("SEND_MESSAGE cria Message, atualiza lastInteractionAt do contato e cria Activity mensagem", () => {
-    const state = baseState();
-    const before = state.contacts[0].lastInteractionAt;
-
-    const next = crmReducer(state, {
-      type: "SEND_MESSAGE",
-      conversationId: "conv_1",
-      text: "Olá! Temos o iPhone disponível sim.",
-      authorId: "user_1",
-    });
-
-    const contact = next.contacts.find((c) => c.id === "contact_1")!;
-    expect(new Date(contact.lastInteractionAt).getTime()).toBeGreaterThanOrEqual(new Date(before).getTime());
-    expect(
-      next.messages.some(
-        (m) => m.conversationId === "conv_1" && m.direction === "out" && m.text.includes("iPhone disponível"),
-      ),
-    ).toBe(true);
-    expect(next.activities.some((a) => a.type === "mensagem")).toBe(true);
-  });
-
-  it("RECEIVE_MESSAGE incrementa unread da conversa e também atualiza lastInteractionAt/Activity", () => {
-    const state = baseState();
-    const next = crmReducer(state, {
-      type: "RECEIVE_MESSAGE",
-      conversationId: "conv_1",
-      text: "Oi, tudo bem? Quero saber sobre o iPhone.",
-    });
-
-    const conv = next.conversations.find((c) => c.id === "conv_1")!;
-    expect(conv.unread).toBe(1);
-    expect(next.messages.some((m) => m.conversationId === "conv_1" && m.direction === "in")).toBe(true);
-    expect(next.activities.some((a) => a.type === "mensagem")).toBe(true);
-  });
-});
-
 describe("crmReducer — REMOVE_USER", () => {
   it("remove o usuário pelo id sem afetar os demais", () => {
     const base = baseState();
@@ -227,22 +238,118 @@ describe("crmReducer — REMOVE_USER", () => {
   });
 });
 
-describe("crmReducer — ADD_CONVERSATION", () => {
-  it("adiciona uma conversa nova ao state", () => {
+describe("crmReducer — Realtime sync (REMOTE_UPSERT_*)", () => {
+  it("REMOTE_UPSERT_CONVERSATION insere quando não existe e substitui quando já existe", () => {
     const state = baseState();
-    const conversation: Conversation = {
-      id: "conv_new",
-      tenantId: state.tenants[0].id,
-      contactId: state.contacts[0].id,
-      assigneeId: null,
-      status: "aberta",
-      unread: 0,
-      createdAt: new Date().toISOString(),
-    };
+    const inserted = crmReducer(state, {
+      type: "REMOTE_UPSERT_CONVERSATION",
+      conversation: {
+        id: "conv_new", tenantId: state.tenants[0].id, contactId: state.contacts[0].id,
+        assigneeId: null, status: "aberta", unread: 0, createdAt: new Date().toISOString(),
+      },
+    });
+    expect(inserted.conversations.some((c) => c.id === "conv_new")).toBe(true);
 
-    const next = crmReducer(state, { type: "ADD_CONVERSATION", conversation });
-    expect(next.conversations).toHaveLength(state.conversations.length + 1);
-    expect(next.conversations.some((c) => c.id === "conv_new")).toBe(true);
+    const updated = crmReducer(state, {
+      type: "REMOTE_UPSERT_CONVERSATION",
+      conversation: { ...state.conversations[0], unread: 3 },
+    });
+    expect(updated.conversations.find((c) => c.id === "conv_1")?.unread).toBe(3);
+    expect(updated.conversations).toHaveLength(state.conversations.length);
+  });
+
+  it("REMOTE_UPSERT_MESSAGE insere quando não existe e substitui quando já existe (idempotente pro próprio eco)", () => {
+    const state = baseState();
+    const message: Message = {
+      id: "msg_1", tenantId: state.tenants[0].id, conversationId: "conv_1",
+      direction: "out", text: "Olá!", authorId: "user_1", status: "enviada", createdAt: new Date().toISOString(),
+    };
+    const inserted = crmReducer(state, { type: "REMOTE_UPSERT_MESSAGE", message });
+    expect(inserted.messages).toHaveLength(1);
+
+    const echoed = crmReducer(inserted, { type: "REMOTE_UPSERT_MESSAGE", message: { ...message, status: "lida" } });
+    expect(echoed.messages).toHaveLength(1);
+    expect(echoed.messages[0].status).toBe("lida");
+  });
+
+  it("SET_MESSAGES substitui só as mensagens da conversa informada, preservando as de outras", () => {
+    const state = baseState();
+    const otherConvMessage: Message = {
+      id: "msg_other", tenantId: state.tenants[0].id, conversationId: "conv_2",
+      direction: "in", text: "De outra conversa", status: "entregue", createdAt: new Date().toISOString(),
+    };
+    const withOther = { ...state, messages: [otherConvMessage] };
+
+    const next = crmReducer(withOther, {
+      type: "SET_MESSAGES",
+      conversationId: "conv_1",
+      messages: [
+        { id: "msg_a", tenantId: state.tenants[0].id, conversationId: "conv_1", direction: "in", text: "Oi", status: "lida", createdAt: new Date().toISOString() },
+      ],
+    });
+
+    expect(next.messages.some((m) => m.id === "msg_other")).toBe(true);
+    expect(next.messages.some((m) => m.id === "msg_a")).toBe(true);
+    expect(next.messages).toHaveLength(2);
+  });
+
+  it("REMOTE_UPSERT_CONTACT, REMOTE_UPSERT_DEAL, REMOTE_UPSERT_SUPPLIER e REMOTE_UPSERT_SUPPLIER_PRODUCT inserem ou substituem por id", () => {
+    const state = baseState();
+
+    const newContact: Contact = { ...state.contacts[0], id: "contact_remote", name: "Cliente Remoto" };
+    expect(crmReducer(state, { type: "REMOTE_UPSERT_CONTACT", contact: newContact }).contacts).toHaveLength(2);
+    expect(
+      crmReducer(state, { type: "REMOTE_UPSERT_CONTACT", contact: { ...state.contacts[0], name: "Renomeado" } })
+        .contacts[0].name,
+    ).toBe("Renomeado");
+
+    const newDeal: Deal = { ...state.deals[0], id: "deal_remote" };
+    expect(crmReducer(state, { type: "REMOTE_UPSERT_DEAL", deal: newDeal }).deals).toHaveLength(2);
+
+    const supplier: Supplier = {
+      id: "supplier_remote", tenantId: state.tenants[0].id, name: "Fornecedor Remoto",
+      whatsapp: "+5511900000099", createdAt: new Date().toISOString(),
+    };
+    expect(crmReducer(state, { type: "REMOTE_UPSERT_SUPPLIER", supplier }).suppliers).toHaveLength(1);
+
+    const product: SupplierProduct = {
+      id: "product_remote", tenantId: state.tenants[0].id, supplierId: supplier.id, name: "Case",
+      currentPrice: 50, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+    };
+    const withProduct = crmReducer(state, { type: "REMOTE_UPSERT_SUPPLIER_PRODUCT", product });
+    expect(withProduct.supplierProducts).toHaveLength(1);
+    // Não deve criar entrada de histórico de preço — isso já é responsabilidade
+    // do servidor (ver comentário no reducer).
+    expect(withProduct.supplierPriceChanges).toHaveLength(0);
+  });
+
+  it("REMOTE_UPSERT_APPOINTMENT insere/substitui e REMOVE_APPOINTMENT remove por id", () => {
+    const state = baseState();
+    const appointment: Appointment = {
+      id: "appt_1", tenantId: state.tenants[0].id, contactId: state.contacts[0].id, type: "atendimento",
+      startsAt: new Date().toISOString(), endsAt: new Date().toISOString(), status: "agendado",
+      ownerId: state.users[0].id, createdAt: new Date().toISOString(),
+    };
+    const withAppt = crmReducer(state, { type: "REMOTE_UPSERT_APPOINTMENT", appointment });
+    expect(withAppt.appointments).toHaveLength(1);
+
+    const removed = crmReducer(withAppt, { type: "REMOVE_APPOINTMENT", appointmentId: "appt_1" });
+    expect(removed.appointments).toHaveLength(0);
+  });
+
+  it("REMOTE_UPSERT_EXPENSE insere/substitui por id", () => {
+    const state = baseState();
+    const expense: Expense = {
+      id: "expense_1", tenantId: state.tenants[0].id, description: "Aluguel", value: 1200,
+      userId: state.users[0].id, createdAt: new Date().toISOString(),
+    };
+    const withExpense = crmReducer(state, { type: "REMOTE_UPSERT_EXPENSE", expense });
+    expect(withExpense.expenses).toHaveLength(1);
+    const updated = crmReducer(withExpense, {
+      type: "REMOTE_UPSERT_EXPENSE",
+      expense: { ...expense, value: 1500 },
+    });
+    expect(updated.expenses[0].value).toBe(1500);
   });
 });
 
@@ -865,6 +972,7 @@ describe("crmReducer — SET_REMOTE_DATA e LOGOUT", () => {
       users: [],
       suppliers: [newSupplier],
       supplierProducts: [],
+      conversations: [],
     });
 
     expect(next.contacts).toEqual([newContact]);
@@ -889,6 +997,7 @@ describe("crmReducer — SET_REMOTE_DATA e LOGOUT", () => {
       users: [freshUser],
       suppliers: [],
       supplierProducts: [],
+      conversations: [],
     });
 
     expect(next.users).toContainEqual(freshUser);

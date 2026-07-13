@@ -4,8 +4,10 @@
 
 import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
-import { CalendarDays, CalendarX, MessageCircle, Pencil, ShoppingBag, Wallet } from "lucide-react";
+import { CalendarDays, CalendarX, MessageCircle, Pencil, ShoppingBag, Trash2, Wallet } from "lucide-react";
+import { toast } from "sonner";
 
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { AppointmentDialog } from "@/components/agenda/AppointmentDialog";
 import { ActivityTimeline } from "@/components/contacts/ActivityTimeline";
@@ -25,9 +27,14 @@ import {
   STAGE_LABELS,
 } from "@/lib/constants";
 import { brl, relativeTime } from "@/lib/format";
+import { ApiError, api, mapConversation, type ContactDeletionSummary } from "@/lib/apiClient";
 import { contactById, conversationWithContact, currentUser, tenantScope } from "@/lib/selectors";
-import { newId, useCrm } from "@/lib/store";
-import type { Appointment, Conversation, Deal } from "@/lib/types";
+import { useCrm } from "@/lib/store";
+import type { Appointment, Deal } from "@/lib/types";
+
+function pt(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -47,6 +54,10 @@ export function ContactDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [apptOpen, setApptOpen] = useState(false);
   const [editDealTarget, setEditDealTarget] = useState<Deal | null>(null);
+  const [deletingOpen, setDeletingOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deletionSummary, setDeletionSummary] = useState<ContactDeletionSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   const isGestor = currentUser(state)?.role === "gestor";
 
@@ -77,25 +88,49 @@ export function ContactDetailPage() {
     return users.find((u) => u.id === ownerId)?.name ?? "—";
   }
 
-  function handleOpenConversation() {
+  async function handleOpenConversation() {
     const existing = conversationWithContact(state, contact!.id);
     if (existing) {
       navigate(`/inbox/${existing.id}`);
       return;
     }
 
-    if (!state.session) return;
-    const conversation: Conversation = {
-      id: newId("conv"),
-      tenantId: state.session.tenantId,
-      contactId: contact!.id,
-      assigneeId: null,
-      status: "aberta",
-      unread: 0,
-      createdAt: new Date().toISOString(),
-    };
-    dispatch({ type: "ADD_CONVERSATION", conversation });
-    navigate(`/inbox/${conversation.id}`);
+    try {
+      const created = await api.createConversation(contact!.id);
+      dispatch({ type: "REMOTE_UPSERT_CONVERSATION", conversation: mapConversation(created) });
+      navigate(`/inbox/${created.id}`);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Não foi possível abrir a conversa.");
+    }
+  }
+
+  async function handleRequestDelete() {
+    setDeletingOpen(true);
+    setDeletionSummary(null);
+    setSummaryLoading(true);
+    try {
+      const summary = await api.getContactDeletionSummary(contact!.id);
+      setDeletionSummary(summary);
+    } catch {
+      // Sem a contagem, o dialog ainda mostra o aviso genérico de risco
+      // (ver description abaixo) — não bloqueia a exclusão por causa disso.
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    setDeleting(true);
+    try {
+      await api.deleteContact(contact!.id);
+      dispatch({ type: "REMOVE_CONTACT", contactId: contact!.id });
+      toast.success("Cliente excluído.");
+      navigate("/clientes");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Erro ao excluir cliente.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -132,6 +167,16 @@ export function ContactDetailPage() {
             <Pencil />
             Editar
           </Button>
+          {isGestor && (
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={handleRequestDelete}
+            >
+              <Trash2 />
+              Excluir cliente
+            </Button>
+          )}
         </div>
       </div>
 
@@ -193,6 +238,29 @@ export function ContactDetailPage() {
         deal={editDealTarget}
         open={!!editDealTarget}
         onOpenChange={(open) => !open && setEditDealTarget(null)}
+      />
+      <ConfirmDeleteDialog
+        open={deletingOpen}
+        onOpenChange={setDeletingOpen}
+        onConfirm={handleConfirmDelete}
+        deleting={deleting}
+        title={`Excluir ${contact.name}?`}
+        description={
+          summaryLoading ? (
+            "Verificando o que será apagado…"
+          ) : deletionSummary ? (
+            <>
+              Este cliente tem <strong>{pt(deletionSummary.deals, "negócio", "negócios")}</strong>,{" "}
+              <strong>{pt(deletionSummary.appointments, "agendamento", "agendamentos")}</strong>,{" "}
+              <strong>{pt(deletionSummary.activities, "atividade", "atividades")}</strong> e{" "}
+              <strong>{pt(deletionSummary.attachments, "comprovante", "comprovantes")}</strong> — excluir apaga tudo
+              isso PERMANENTEMENTE, junto com conversas e mensagens. Essa ação não pode ser desfeita.
+            </>
+          ) : (
+            "Essa ação não pode ser desfeita — todo negócio, agendamento, atividade, conversa e comprovante " +
+              "deste cliente é apagado permanentemente."
+          )
+        }
       />
     </div>
   );

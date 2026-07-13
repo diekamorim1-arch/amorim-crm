@@ -17,11 +17,22 @@ import {
   api,
   mapAppointment,
   mapContact,
+  mapConversation,
   mapDeal,
+  mapExpense,
+  mapMessage,
   mapSupplier,
   mapSupplierProduct,
   mapUser,
   setImpersonatedTenantId,
+  type ApiAppointment,
+  type ApiContact,
+  type ApiConversation,
+  type ApiDeal,
+  type ApiExpense,
+  type ApiMessage,
+  type ApiSupplier,
+  type ApiSupplierProduct,
 } from "./apiClient";
 import type {
   Activity,
@@ -48,8 +59,8 @@ import type {
 export { newId };
 
 // Re-exportado para consumidores que despacham ações fora de componentes
-// React (ex.: fakeReply.ts) e precisam tipar seu próprio `dispatch` recebido
-// por parâmetro sem importar diretamente de "react".
+// React e precisam tipar seu próprio `dispatch` recebido por parâmetro sem
+// importar diretamente de "react".
 export type { Dispatch };
 
 export type CrmAction =
@@ -58,16 +69,19 @@ export type CrmAction =
   | { type: "MARK_DEAL_LOST"; dealId: string; reason: LossReason }
   | { type: "ADD_CONTACT"; contact: Contact }
   | { type: "UPDATE_CONTACT"; contact: Contact }
+  | { type: "REMOVE_CONTACT"; contactId: string }
+  | { type: "REMOTE_UPSERT_CONTACT"; contact: Contact }
   | { type: "ADD_DEAL"; deal: Deal }
   | { type: "UPDATE_DEAL"; deal: Deal }
   | { type: "REMOVE_DEAL"; dealId: string }
-  | { type: "ADD_CONVERSATION"; conversation: Conversation }
-  | { type: "SEND_MESSAGE"; conversationId: string; text: string; authorId: string }
-  | { type: "RECEIVE_MESSAGE"; conversationId: string; text: string }
-  | { type: "MARK_CONVERSATION_READ"; conversationId: string }
-  | { type: "ASSIGN_CONVERSATION"; conversationId: string; assigneeId: string | null }
+  | { type: "REMOTE_UPSERT_DEAL"; deal: Deal }
+  | { type: "REMOTE_UPSERT_CONVERSATION"; conversation: Conversation }
+  | { type: "REMOTE_UPSERT_MESSAGE"; message: Message }
+  | { type: "SET_MESSAGES"; conversationId: string; messages: Message[] }
   | { type: "ADD_APPOINTMENT"; appointment: Appointment }
   | { type: "UPDATE_APPOINTMENT"; appointment: Appointment }
+  | { type: "REMOVE_APPOINTMENT"; appointmentId: string }
+  | { type: "REMOTE_UPSERT_APPOINTMENT"; appointment: Appointment }
   | { type: "ADD_ACTIVITY"; activity: Activity }
   | { type: "SET_CONNECTION_STATUS"; connectionId: string; status: ConnectionStatus }
   | { type: "ADD_USER"; user: User }
@@ -76,17 +90,20 @@ export type CrmAction =
   | { type: "ADD_SUPPLIER"; supplier: Supplier }
   | { type: "UPDATE_SUPPLIER"; supplier: Supplier }
   | { type: "REMOVE_SUPPLIER"; supplierId: string }
+  | { type: "REMOTE_UPSERT_SUPPLIER"; supplier: Supplier }
   | { type: "ADD_SUPPLIER_PRODUCT"; product: SupplierProduct }
   | { type: "ADD_SUPPLIER_PRODUCTS"; products: SupplierProduct[] }
   | { type: "UPDATE_SUPPLIER_PRODUCT_PRICE"; productId: string; price: number }
   | { type: "UPDATE_SUPPLIER_PRODUCT"; productId: string; name: string; price: number; colors?: string }
   | { type: "REMOVE_SUPPLIER_PRODUCT"; productId: string }
+  | { type: "REMOTE_UPSERT_SUPPLIER_PRODUCT"; product: SupplierProduct }
   | { type: "UPDATE_DEAL_FINANCIALS"; dealId: string; value: number; supplierProductId?: string; supplierValue: number; giftValue: number; freightValue: number }
   | { type: "ADD_ATTACHMENT"; attachment: Attachment }
   | { type: "REMOVE_ATTACHMENT"; attachmentId: string }
   | { type: "ADD_EXPENSE"; expense: Expense }
   | { type: "REMOVE_EXPENSE"; expenseId: string }
   | { type: "SET_EXPENSES"; expenses: Expense[] }
+  | { type: "REMOTE_UPSERT_EXPENSE"; expense: Expense }
   | { type: "SET_AUTH_SESSION"; user: User }
   | {
       type: "SET_REMOTE_DATA";
@@ -96,12 +113,21 @@ export type CrmAction =
       users: User[];
       suppliers: Supplier[];
       supplierProducts: SupplierProduct[];
+      conversations: Conversation[];
     }
   | { type: "ENTER_TENANT_AS_GESTOR"; tenantId: string; tenantName: string }
   | { type: "EXIT_IMPERSONATION" };
 
 function countWonDeals(state: CrmState, contactId: string): number {
   return state.deals.filter((d) => d.contactId === contactId && d.outcome === "ganho").length;
+}
+
+/** Insere ou substitui por id — usado pelos eventos REMOTE_UPSERT_* (Supabase
+ * Realtime): tanto faz se o evento é a própria mutação otimista ecoando de
+ * volta (já existe, vira substituição) ou a mutação de outro usuário chegando
+ * pela primeira vez (não existe, vira inserção). */
+function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
+  return list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item];
 }
 
 /** Reducer puro — sem dependências de React, testável isoladamente. */
@@ -179,6 +205,10 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       return { ...state, contacts: state.contacts.map((c) => (c.id === action.contact.id ? action.contact : c)) };
     }
 
+    case "REMOTE_UPSERT_CONTACT": {
+      return { ...state, contacts: upsertById(state.contacts, action.contact) };
+    }
+
     case "ADD_DEAL": {
       return { ...state, deals: [...state.deals, action.deal] };
     }
@@ -197,84 +227,43 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       return { ...state, deals: state.deals.filter((d) => d.id !== action.dealId) };
     }
 
-    case "ADD_CONVERSATION": {
-      return { ...state, conversations: [...state.conversations, action.conversation] };
+    case "REMOTE_UPSERT_DEAL": {
+      return { ...state, deals: upsertById(state.deals, action.deal) };
     }
 
-    case "SEND_MESSAGE":
-    case "RECEIVE_MESSAGE": {
-      const conversation = state.conversations.find((c) => c.id === action.conversationId);
-      if (!conversation) return state;
-      const now = new Date().toISOString();
-      const direction: "in" | "out" = action.type === "SEND_MESSAGE" ? "out" : "in";
-      const authorId = action.type === "SEND_MESSAGE" ? action.authorId : undefined;
-
-      const message: Message = {
-        id: newId("msg"),
-        tenantId: conversation.tenantId,
-        conversationId: conversation.id,
-        direction,
-        text: action.text,
-        authorId,
-        status: direction === "out" ? "enviada" : "entregue",
-        createdAt: now,
-      };
-
-      // Quando o cliente responde, simulamos que ele leu as mensagens que
-      // enviamos antes disso nesta conversa: promove os ticks de
-      // "enviada"/"entregue" para "lida" (✓✓ com tingimento) antes de
-      // anexar a nova mensagem recebida.
-      const priorMessages =
-        direction === "in"
-          ? state.messages.map((m) =>
-              m.conversationId === conversation.id && m.direction === "out" && m.status !== "lida"
-                ? { ...m, status: "lida" as const }
-                : m,
-            )
-          : state.messages;
-
-      const conversations = state.conversations.map((c) =>
-        c.id === conversation.id ? { ...c, unread: direction === "in" ? c.unread + 1 : c.unread } : c,
+    case "REMOVE_CONTACT": {
+      const { contactId } = action;
+      const removedConversationIds = new Set(
+        state.conversations.filter((c) => c.contactId === contactId).map((c) => c.id),
       );
-
-      const contacts = state.contacts.map((c) =>
-        c.id === conversation.contactId ? { ...c, lastInteractionAt: now } : c,
-      );
-
-      const activity: Activity = {
-        id: newId("activity"),
-        tenantId: conversation.tenantId,
-        contactId: conversation.contactId,
-        userId: authorId ?? conversation.assigneeId ?? "sistema",
-        type: "mensagem",
-        description: direction === "out" ? "Mensagem enviada." : "Mensagem recebida.",
-        createdAt: now,
-      };
-
       return {
         ...state,
-        messages: [...priorMessages, message],
-        conversations,
-        contacts,
-        activities: [...state.activities, activity],
+        contacts: state.contacts.filter((c) => c.id !== contactId),
+        deals: state.deals.filter((d) => d.contactId !== contactId),
+        appointments: state.appointments.filter((a) => a.contactId !== contactId),
+        activities: state.activities.filter((a) => a.contactId !== contactId),
+        attachments: state.attachments.filter((a) => a.contactId !== contactId),
+        conversations: state.conversations.filter((c) => c.contactId !== contactId),
+        messages: state.messages.filter((m) => !removedConversationIds.has(m.conversationId)),
       };
     }
 
-    case "MARK_CONVERSATION_READ": {
-      return {
-        ...state,
-        conversations: state.conversations.map((c) =>
-          c.id === action.conversationId ? { ...c, unread: 0 } : c,
-        ),
-      };
+    case "REMOTE_UPSERT_CONVERSATION": {
+      return { ...state, conversations: upsertById(state.conversations, action.conversation) };
     }
 
-    case "ASSIGN_CONVERSATION": {
+    case "REMOTE_UPSERT_MESSAGE": {
+      return { ...state, messages: upsertById(state.messages, action.message) };
+    }
+
+    case "SET_MESSAGES": {
+      // Substituição só das mensagens desta conversa — busca o histórico
+      // completo a cada abertura do ChatPane (GET /conversations/{id}/messages,
+      // que também marca a conversa como lida no servidor), preservando
+      // mensagens já carregadas de outras conversas no state.
       return {
         ...state,
-        conversations: state.conversations.map((c) =>
-          c.id === action.conversationId ? { ...c, assigneeId: action.assigneeId } : c,
-        ),
+        messages: [...state.messages.filter((m) => m.conversationId !== action.conversationId), ...action.messages],
       };
     }
 
@@ -287,6 +276,14 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
         ...state,
         appointments: state.appointments.map((a) => (a.id === action.appointment.id ? action.appointment : a)),
       };
+    }
+
+    case "REMOVE_APPOINTMENT": {
+      return { ...state, appointments: state.appointments.filter((a) => a.id !== action.appointmentId) };
+    }
+
+    case "REMOTE_UPSERT_APPOINTMENT": {
+      return { ...state, appointments: upsertById(state.appointments, action.appointment) };
     }
 
     case "ADD_ACTIVITY": {
@@ -323,6 +320,10 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
     case "UPDATE_SUPPLIER": {
       return { ...state, suppliers: state.suppliers.map((s) => (s.id === action.supplier.id ? action.supplier : s)) };
+    }
+
+    case "REMOTE_UPSERT_SUPPLIER": {
+      return { ...state, suppliers: upsertById(state.suppliers, action.supplier) };
     }
 
     case "REMOVE_SUPPLIER": {
@@ -418,6 +419,14 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
       };
     }
 
+    case "REMOTE_UPSERT_SUPPLIER_PRODUCT": {
+      // Só substitui a linha do produto — o histórico de preço em si (a
+      // tabela supplier_price_changes) tem sua própria origem de verdade no
+      // servidor; recriar uma entrada de histórico aqui a partir do evento
+      // Realtime duplicaria o registro que o outro usuário já gravou.
+      return { ...state, supplierProducts: upsertById(state.supplierProducts, action.product) };
+    }
+
     case "UPDATE_DEAL_FINANCIALS": {
       const deal = state.deals.find((d) => d.id === action.dealId);
       if (!deal) return state;
@@ -450,6 +459,10 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
 
     case "REMOVE_EXPENSE": {
       return { ...state, expenses: state.expenses.filter((e) => e.id !== action.expenseId) };
+    }
+
+    case "REMOTE_UPSERT_EXPENSE": {
+      return { ...state, expenses: upsertById(state.expenses, action.expense) };
     }
 
     case "SET_EXPENSES": {
@@ -542,6 +555,7 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
         users,
         suppliers: action.suppliers,
         supplierProducts: action.supplierProducts,
+        conversations: action.conversations,
       };
     }
 
@@ -557,6 +571,7 @@ interface RemoteData {
   users: User[];
   suppliers: Supplier[];
   supplierProducts: SupplierProduct[];
+  conversations: Conversation[];
 }
 
 interface CrmContextValue {
@@ -608,12 +623,13 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
   const [dataVersion, setDataVersion] = useState(0);
 
   async function refreshCrmData(): Promise<RemoteData> {
-    const [apiContacts, apiDeals, apiAppointments, apiUsers, apiSuppliers] = await Promise.all([
+    const [apiContacts, apiDeals, apiAppointments, apiUsers, apiSuppliers, apiConversations] = await Promise.all([
       api.listContacts(),
       api.listDeals(),
       api.listAppointments(),
       api.listUsers(),
       api.listSuppliers(),
+      api.listConversations(),
     ]);
     const suppliers = apiSuppliers.map(mapSupplier);
     // Não existe um "listar todos os produtos do tenant" — só por fornecedor
@@ -628,6 +644,7 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
       users: apiUsers.map(mapUser),
       suppliers,
       supplierProducts: productsBySupplier.flat().map(mapSupplierProduct),
+      conversations: apiConversations.map(mapConversation),
     };
     dispatch({ type: "SET_REMOTE_DATA", ...data });
     setDataVersion((v) => v + 1);
@@ -685,6 +702,85 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sincronização entre usuários do mesmo tenant: contacts/deals/appointments/
+  // suppliers/supplier_products/expenses têm Realtime habilitado no Supabase
+  // (migração enable_realtime_sync_tables + replica identity full, senão
+  // DELETE chega sem tenant_id e o filtro do canal nunca casa). Um canal por
+  // tenant, upsert/remove granular no state local — sem esperar o próximo
+  // refreshCrmData pra ver o que o outro usuário acabou de fazer. upsertById
+  // absorve sem problema o próprio evento "ecoando" de volta pra quem originou
+  // a mudança (replace em vez de duplicar), não precisa filtrar por autor.
+  useEffect(() => {
+    const tenantId = state.session?.tenantId;
+    if (!tenantId) return;
+
+    const filter = `tenant_id=eq.${tenantId}`;
+    const channel = supabase
+      .channel(`tenant-sync-${tenantId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "contacts", filter }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          dispatch({ type: "REMOVE_CONTACT", contactId: (payload.old as { id: string }).id });
+        } else {
+          dispatch({ type: "REMOTE_UPSERT_CONTACT", contact: mapContact(payload.new as ApiContact) });
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "deals", filter }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          dispatch({ type: "REMOVE_DEAL", dealId: (payload.old as { id: string }).id });
+        } else {
+          dispatch({ type: "REMOTE_UPSERT_DEAL", deal: mapDeal(payload.new as ApiDeal) });
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "appointments", filter }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          dispatch({ type: "REMOVE_APPOINTMENT", appointmentId: (payload.old as { id: string }).id });
+        } else {
+          dispatch({ type: "REMOTE_UPSERT_APPOINTMENT", appointment: mapAppointment(payload.new as ApiAppointment) });
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "suppliers", filter }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          dispatch({ type: "REMOVE_SUPPLIER", supplierId: (payload.old as { id: string }).id });
+        } else {
+          dispatch({ type: "REMOTE_UPSERT_SUPPLIER", supplier: mapSupplier(payload.new as ApiSupplier) });
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "supplier_products", filter }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          dispatch({ type: "REMOVE_SUPPLIER_PRODUCT", productId: (payload.old as { id: string }).id });
+        } else {
+          dispatch({
+            type: "REMOTE_UPSERT_SUPPLIER_PRODUCT",
+            product: mapSupplierProduct(payload.new as ApiSupplierProduct),
+          });
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "expenses", filter }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          dispatch({ type: "REMOVE_EXPENSE", expenseId: (payload.old as { id: string }).id });
+        } else {
+          dispatch({ type: "REMOTE_UPSERT_EXPENSE", expense: mapExpense(payload.new as ApiExpense) });
+        }
+      })
+      // conversations/messages nunca são excluídas hoje (sem endpoint de
+      // delete), então só INSERT/UPDATE importam aqui.
+      .on("postgres_changes", { event: "*", schema: "public", table: "conversations", filter }, (payload) => {
+        if (payload.eventType !== "DELETE") {
+          dispatch({ type: "REMOTE_UPSERT_CONVERSATION", conversation: mapConversation(payload.new as ApiConversation) });
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter }, (payload) => {
+        if (payload.eventType !== "DELETE") {
+          dispatch({ type: "REMOTE_UPSERT_MESSAGE", message: mapMessage(payload.new as ApiMessage) });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [state.session?.tenantId, dispatch]);
 
   // Mantém o header X-Impersonate-Tenant do apiClient sincronizado com a
   // sessão: liga quando ENTER_TENANT_AS_GESTOR ou o re-sync de

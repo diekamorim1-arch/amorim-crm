@@ -13,11 +13,11 @@ import { KanbanColumn } from "@/components/pipeline/KanbanColumn";
 import { LostDealsSheet } from "@/components/pipeline/LostDealsSheet";
 import { MarkLostDialog } from "@/components/pipeline/MarkLostDialog";
 import { Button } from "@/components/ui/button";
-import { ApiError, api, mapContact, mapDeal } from "@/lib/apiClient";
+import { ApiError, api, mapContact, mapConversation, mapDeal } from "@/lib/apiClient";
 import { STAGES } from "@/lib/constants";
 import { assignableUsers, contactById, conversationWithContact, currentUser, dealsByStage, lostDeals } from "@/lib/selectors";
-import { newId, useCrm } from "@/lib/store";
-import type { Conversation, Deal, LossReason, Stage } from "@/lib/types";
+import { useCrm } from "@/lib/store";
+import type { Deal, LossReason, Stage } from "@/lib/types";
 
 const POS_VENDA_WINDOW_DAYS = 30;
 const POS_VENDA_WINDOW_MS = POS_VENDA_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -123,25 +123,20 @@ export function PipelinePage() {
     navigate(`/clientes/${contactId}`);
   }
 
-  function handleOpenConversation(contactId: string) {
+  async function handleOpenConversation(contactId: string) {
     const existing = conversationWithContact(state, contactId);
     if (existing) {
       navigate(`/inbox/${existing.id}`);
       return;
     }
 
-    if (!state.session) return;
-    const conversation: Conversation = {
-      id: newId("conv"),
-      tenantId: state.session.tenantId,
-      contactId,
-      assigneeId: null,
-      status: "aberta",
-      unread: 0,
-      createdAt: new Date().toISOString(),
-    };
-    dispatch({ type: "ADD_CONVERSATION", conversation });
-    navigate(`/inbox/${conversation.id}`);
+    try {
+      const created = await api.createConversation(contactId);
+      dispatch({ type: "REMOTE_UPSERT_CONVERSATION", conversation: mapConversation(created) });
+      navigate(`/inbox/${created.id}`);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Não foi possível abrir a conversa.");
+    }
   }
 
   async function handleCreateLead(values: AddLeadFormValues) {

@@ -10,9 +10,11 @@ import type {
   Attachment,
   BillingStatus,
   Contact,
+  Conversation,
   Deal,
   Expense,
   LossReason,
+  Message,
   Role,
   Supplier,
   SupplierPriceChange,
@@ -153,6 +155,52 @@ export interface ApiAppointment {
   status: string;
   owner_id: string;
   note: string | null;
+}
+
+export interface ApiConversation {
+  id: string;
+  tenant_id: string;
+  contact_id: string;
+  assignee_id: string | null;
+  status: string;
+  unread: number;
+  created_at: string;
+}
+
+export interface ApiMessage {
+  id: string;
+  tenant_id: string;
+  conversation_id: string;
+  direction: string;
+  text: string;
+  author_id: string | null;
+  status: string;
+  created_at: string;
+}
+
+export function mapConversation(api: ApiConversation): Conversation {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    contactId: api.contact_id,
+    assigneeId: api.assignee_id,
+    status: api.status as Conversation["status"],
+    unread: api.unread,
+    createdAt: api.created_at,
+  };
+}
+
+export function mapMessage(api: ApiMessage): Message {
+  return {
+    id: api.id,
+    tenantId: api.tenant_id,
+    conversationId: api.conversation_id,
+    direction: api.direction as Message["direction"],
+    text: api.text,
+    authorId: api.author_id ?? undefined,
+    status: api.status as Message["status"],
+    createdAt: api.created_at,
+  };
 }
 
 // Mapeiam o DTO snake_case do backend pro tipo camelCase que o resto do app já
@@ -538,6 +586,13 @@ export interface TenantDeletionSummary {
   users: number;
 }
 
+export interface ContactDeletionSummary {
+  deals: number;
+  appointments: number;
+  activities: number;
+  attachments: number;
+}
+
 export function mapTenant(api: ApiTenant): Tenant {
   return {
     id: api.id,
@@ -614,6 +669,25 @@ export const api = {
     request<ApiContact>("/api/v1/contacts", { method: "POST", body: JSON.stringify(body) }),
   updateContact: (id: string, body: Partial<ContactPayload>) =>
     request<ApiContact>(`/api/v1/contacts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  getContactDeletionSummary: (id: string) =>
+    request<ContactDeletionSummary>(`/api/v1/contacts/${id}/deletion-summary`),
+  deleteContact: (id: string) => request<{ status: string }>(`/api/v1/contacts/${id}`, { method: "DELETE" }),
+
+  listConversations: () => request<ApiConversation[]>("/api/v1/conversations"),
+  createConversation: (contactId: string) =>
+    request<ApiConversation>("/api/v1/conversations", { method: "POST", body: JSON.stringify({ contact_id: contactId }) }),
+  getMessages: (conversationId: string) =>
+    request<ApiMessage[]>(`/api/v1/conversations/${conversationId}/messages`),
+  sendConversationMessage: (conversationId: string, text: string) =>
+    request<ApiMessage>(`/api/v1/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  updateConversationAssignee: (conversationId: string, assigneeId: string | null) =>
+    request<ApiConversation>(`/api/v1/conversations/${conversationId}/assignee`, {
+      method: "PATCH",
+      body: JSON.stringify({ assignee_id: assigneeId }),
+    }),
 
   listDeals: () => request<ApiDeal[]>("/api/v1/deals"),
   createLead: (body: LeadPayload) =>

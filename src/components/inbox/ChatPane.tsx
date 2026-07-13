@@ -1,6 +1,7 @@
 // ChatPane — coluna central do Inbox: header com identidade + atribuição,
-// histórico de mensagens com separadores de dia e composer auto-grow. Marca
-// a conversa como lida ao abrir e agenda uma resposta fake após cada envio.
+// histórico de mensagens com separadores de dia e composer auto-grow. Busca o
+// histórico real da conversa (o que também marca como lida no servidor) e
+// envia mensagens de verdade via api.sendConversationMessage.
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
@@ -18,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { scheduleFakeReply } from "@/lib/fakeReply";
+import { ApiError, api, mapConversation, mapMessage } from "@/lib/apiClient";
 import { contactById, currentUser, tenantScope } from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
 import type { Message } from "@/lib/types";
@@ -78,6 +79,8 @@ export function ChatPane({ conversationId, onBack, onToggleContext, contextOpen 
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(true);
 
   const { conversations, messages, users } = tenantScope(state);
   const conversation = conversations.find((c) => c.id === conversationId);
@@ -86,11 +89,27 @@ export function ChatPane({ conversationId, onBack, onToggleContext, contextOpen 
   const conversationMessages = messages.filter((m) => m.conversationId === conversationId);
 
   useEffect(() => {
-    if (conversation && conversation.unread > 0) {
-      dispatch({ type: "MARK_CONVERSATION_READ", conversationId });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, conversation?.unread]);
+    let active = true;
+    setMessagesLoading(true);
+    // GET /conversations/{id}/messages também marca a conversa como lida no
+    // servidor (unread -> 0) — o eco disso chega pelo canal Realtime, não
+    // precisa de um dispatch local separado pra isso.
+    api
+      .getMessages(conversationId)
+      .then((apiMessages) => {
+        if (!active) return;
+        dispatch({ type: "SET_MESSAGES", conversationId, messages: apiMessages.map(mapMessage) });
+      })
+      .catch(() => {
+        if (active) toast.error("Não foi possível carregar as mensagens desta conversa.");
+      })
+      .finally(() => {
+        if (active) setMessagesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [conversationId, dispatch]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -104,30 +123,42 @@ export function ChatPane({ conversationId, onBack, onToggleContext, contextOpen 
     );
   }
 
-  function handleAssign(assigneeId: string | null) {
-    dispatch({ type: "ASSIGN_CONVERSATION", conversationId, assigneeId });
-    if (assigneeId === null) {
-      toast.success("Conversa sem responsável.");
-    } else if (assigneeId === viewer?.id) {
-      toast.success("Você assumiu esta conversa.");
-    } else {
-      const name = users.find((u) => u.id === assigneeId)?.name ?? "";
-      toast.success(`Conversa atribuída a ${name}.`);
+  async function handleAssign(assigneeId: string | null) {
+    try {
+      const updated = await api.updateConversationAssignee(conversationId, assigneeId);
+      dispatch({ type: "REMOTE_UPSERT_CONVERSATION", conversation: mapConversation(updated) });
+      if (assigneeId === null) {
+        toast.success("Conversa sem responsável.");
+      } else if (assigneeId === viewer?.id) {
+        toast.success("Você assumiu esta conversa.");
+      } else {
+        const name = users.find((u) => u.id === assigneeId)?.name ?? "";
+        toast.success(`Conversa atribuída a ${name}.`);
+      }
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Não foi possível atribuir a conversa.");
     }
   }
 
-  function handleSend() {
+  async function handleSend() {
     const text = draft.trim();
-    if (!text || !viewer) return;
-    dispatch({ type: "SEND_MESSAGE", conversationId, text, authorId: viewer.id });
-    scheduleFakeReply(dispatch, conversationId);
-    setDraft("");
+    if (!text || !viewer || sending) return;
+    setSending(true);
+    try {
+      const sent = await api.sendConversationMessage(conversationId, text);
+      dispatch({ type: "REMOTE_UPSERT_MESSAGE", message: mapMessage(sent) });
+      setDraft("");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Não foi possível enviar a mensagem.");
+    } finally {
+      setSending(false);
+    }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      handleSend();
+      void handleSend();
     }
   }
 
@@ -192,16 +223,20 @@ export function ChatPane({ conversationId, onBack, onToggleContext, contextOpen 
       )}
 
       <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-3">
-        {rows.map((row) =>
-          row.kind === "separator" ? (
-            <div key={row.key} className="my-2 flex justify-center">
-              <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                {row.label}
-              </span>
-            </div>
-          ) : (
-            <MessageBubble key={row.message.id} message={row.message} />
-          ),
+        {messagesLoading && conversationMessages.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground">Carregando mensagens…</p>
+        ) : (
+          rows.map((row) =>
+            row.kind === "separator" ? (
+              <div key={row.key} className="my-2 flex justify-center">
+                <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                  {row.label}
+                </span>
+              </div>
+            ) : (
+              <MessageBubble key={row.message.id} message={row.message} />
+            ),
+          )
         )}
       </div>
 
@@ -214,7 +249,7 @@ export function ChatPane({ conversationId, onBack, onToggleContext, contextOpen 
           className="max-h-40 flex-1 resize-none"
           rows={1}
         />
-        <Button size="icon" onClick={handleSend} disabled={!draft.trim()} aria-label="Enviar mensagem">
+        <Button size="icon" onClick={() => void handleSend()} disabled={!draft.trim() || sending} aria-label="Enviar mensagem">
           <Send />
         </Button>
       </div>
