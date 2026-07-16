@@ -852,6 +852,31 @@ describe("dashboardMetrics — netProfitMonth", () => {
     // (5000 - 3800 - 100 - 50) + (2000 - 0 - 0 - 0) = 1050 + 2000
     expect(metrics.netProfitMonth).toBe(3050);
   });
+
+  it("desconta os gastos gerais do mês (expensesMonth) do lucro líquido por negócio", () => {
+    const base = baseState();
+    const wonThisMonth: Deal = {
+      ...base.deals[0],
+      id: "deal_won_1",
+      outcome: "ganho",
+      stage: "pos_venda",
+      value: 2000,
+      stageChangedAt: new Date().toISOString(),
+    };
+    const expenseThisMonth: Expense = {
+      id: "expense_1", tenantId: base.tenants[0].id, description: "Aluguel",
+      value: 300, userId: base.users[0].id, createdAt: new Date().toISOString(),
+    };
+    const expenseLastMonth: Expense = {
+      id: "expense_2", tenantId: base.tenants[0].id, description: "Gasto antigo",
+      value: 999, userId: base.users[0].id, createdAt: daysAgo(45),
+    };
+    const state: CrmState = { ...base, deals: [wonThisMonth], expenses: [expenseThisMonth, expenseLastMonth] };
+
+    const metrics = dashboardMetrics(state);
+    expect(metrics.expensesMonth).toBe(300);
+    expect(metrics.netProfitMonth).toBe(2000 - 300);
+  });
 });
 
 describe("isStale", () => {
@@ -973,6 +998,7 @@ describe("crmReducer — SET_REMOTE_DATA e LOGOUT", () => {
       suppliers: [newSupplier],
       supplierProducts: [],
       conversations: [],
+      expenses: [],
     });
 
     expect(next.contacts).toEqual([newContact]);
@@ -998,6 +1024,7 @@ describe("crmReducer — SET_REMOTE_DATA e LOGOUT", () => {
       suppliers: [],
       supplierProducts: [],
       conversations: [],
+      expenses: [],
     });
 
     expect(next.users).toContainEqual(freshUser);

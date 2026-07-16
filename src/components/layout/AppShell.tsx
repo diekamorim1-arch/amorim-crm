@@ -2,17 +2,19 @@
 // o layout (sidebar desktop + topbar + bottom-bar mobile).
 
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router";
+import { toast } from "sonner";
 
 import { MobileBottomNav, Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/button";
+import { setImpersonatedTenantId } from "@/lib/apiClient";
 import { isImpersonating } from "@/lib/selectors";
 import { useCrm } from "@/lib/store";
 
 const ATENDENTE_ALLOWED_BASES = ["/pipeline", "/inbox", "/clientes", "/agenda", "/whatsapp", "/fornecedores", "/conta"];
 
 export function AppShell() {
-  const { state, dispatch } = useCrm();
+  const { state, dispatch, refreshCrmData } = useCrm();
   const location = useLocation();
   const navigate = useNavigate();
   const session = state.session;
@@ -25,8 +27,20 @@ export function AppShell() {
   const isAdminWithoutTenant = session.role === "admin_saas" && !session.tenantId;
   const impersonating = isImpersonating(state);
 
-  function handleExitImpersonation() {
+  async function handleExitImpersonation() {
+    // Sincrono antes do dispatch, mesmo padrão de handleEnterAsGestor em
+    // AdminTenantsPage: garante que o refreshCrmData logo abaixo já sai sem
+    // o header X-Impersonate-Tenant da loja que está sendo deixada.
+    setImpersonatedTenantId(null);
     dispatch({ type: "EXIT_IMPERSONATION" });
+    try {
+      // Faltava isto: sem recarregar aqui, os dados da loja impersonada
+      // (contacts/deals/suppliers/etc.) ficavam parados em state até
+      // alguma outra ação disparar um refetch.
+      await refreshCrmData();
+    } catch {
+      toast.error("Não foi possível recarregar os dados do painel. Tente recarregar a página.");
+    }
     navigate("/");
   }
 

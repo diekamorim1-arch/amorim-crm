@@ -248,13 +248,14 @@ export function dashboardMetrics(state: CrmState): {
   inNegotiationValue: number;
   revenueMonth: number;
   revenuePrevMonth: number;
+  expensesMonth: number;
   netProfitMonth: number;
   conversionRate: number;
   funnelCounts: { stage: Stage; count: number; value: number }[];
   byChannel: { origin: Origin; total: number; won: number }[];
   lossRanking: { reason: LossReason; count: number }[];
 } {
-  const { contacts, deals } = tenantScope(state);
+  const { contacts, deals, expenses } = tenantScope(state);
 
   const now = new Date();
   const prevMonthRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -272,9 +273,16 @@ export function dashboardMetrics(state: CrmState): {
   const revenuePrevMonth = wonDeals
     .filter((d) => isSameMonth(d.stageChangedAt, prevMonthRef))
     .reduce((sum, d) => sum + d.value, 0);
-  const netProfitMonth = wonDeals
-    .filter((d) => isSameMonth(d.stageChangedAt, now))
-    .reduce((sum, d) => sum + dealNetProfit(d), 0);
+  const expensesMonth = expenses
+    .filter((e) => isSameMonth(e.createdAt, now))
+    .reduce((sum, e) => sum + e.value, 0);
+  // Lucro líquido de verdade da loja no mês: lucro por negócio (venda -
+  // custo de fornecedor - brindes - frete) menos os gastos gerais do mês
+  // (aluguel, contas etc.) — antes só refletia custo por venda, nunca o que
+  // a loja gasta pra existir.
+  const netProfitMonth =
+    wonDeals.filter((d) => isSameMonth(d.stageChangedAt, now)).reduce((sum, d) => sum + dealNetProfit(d), 0) -
+    expensesMonth;
 
   const lostCount = deals.filter((d) => d.outcome === "perdido").length;
   const wonCount = wonDeals.length;
@@ -319,6 +327,7 @@ export function dashboardMetrics(state: CrmState): {
     inNegotiationValue,
     revenueMonth,
     revenuePrevMonth,
+    expensesMonth,
     netProfitMonth,
     conversionRate,
     funnelCounts,

@@ -114,6 +114,7 @@ export type CrmAction =
       suppliers: Supplier[];
       supplierProducts: SupplierProduct[];
       conversations: Conversation[];
+      expenses: Expense[];
     }
   | { type: "ENTER_TENANT_AS_GESTOR"; tenantId: string; tenantName: string }
   | { type: "EXIT_IMPERSONATION" };
@@ -556,6 +557,7 @@ export function crmReducer(state: CrmState, action: CrmAction): CrmState {
         suppliers: action.suppliers,
         supplierProducts: action.supplierProducts,
         conversations: action.conversations,
+        expenses: action.expenses,
       };
     }
 
@@ -572,6 +574,7 @@ interface RemoteData {
   suppliers: Supplier[];
   supplierProducts: SupplierProduct[];
   conversations: Conversation[];
+  expenses: Expense[];
 }
 
 interface CrmContextValue {
@@ -613,6 +616,35 @@ const EMPTY_STATE: CrmState = {
   session: null,
 };
 
+const IMPERSONATION_STORAGE_KEY = "amorim_impersonated_tenant";
+
+interface SavedImpersonation {
+  tenantId: string;
+  tenantName: string;
+}
+
+function saveImpersonation(value: SavedImpersonation): void {
+  sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, JSON.stringify(value));
+}
+
+function clearSavedImpersonation(): void {
+  sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY);
+}
+
+/** sessionStorage (não localStorage): a impersonação some ao fechar a aba,
+ * igual sempre foi — só passa a sobreviver a um F5 dentro da mesma aba. */
+function readSavedImpersonation(): SavedImpersonation | null {
+  try {
+    const raw = sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedImpersonation>;
+    if (typeof parsed.tenantId !== "string") return null;
+    return { tenantId: parsed.tenantId, tenantName: typeof parsed.tenantName === "string" ? parsed.tenantName : "" };
+  } catch {
+    return null;
+  }
+}
+
 export function CrmProvider({ children }: { children: ReactNode }): JSX.Element {
   const [state, dispatch] = useReducer(crmReducer, EMPTY_STATE);
   // Só true depois da 1ª checagem de sessão do Supabase (getSession inicial).
@@ -623,14 +655,16 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
   const [dataVersion, setDataVersion] = useState(0);
 
   async function refreshCrmData(): Promise<RemoteData> {
-    const [apiContacts, apiDeals, apiAppointments, apiUsers, apiSuppliers, apiConversations] = await Promise.all([
-      api.listContacts(),
-      api.listDeals(),
-      api.listAppointments(),
-      api.listUsers(),
-      api.listSuppliers(),
-      api.listConversations(),
-    ]);
+    const [apiContacts, apiDeals, apiAppointments, apiUsers, apiSuppliers, apiConversations, apiExpenses] =
+      await Promise.all([
+        api.listContacts(),
+        api.listDeals(),
+        api.listAppointments(),
+        api.listUsers(),
+        api.listSuppliers(),
+        api.listConversations(),
+        api.listExpenses(),
+      ]);
     const suppliers = apiSuppliers.map(mapSupplier);
     // Não existe um "listar todos os produtos do tenant" — só por fornecedor
     // (GET /suppliers/{id}/products) — então busca em paralelo, um por
@@ -645,6 +679,7 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
       suppliers,
       supplierProducts: productsBySupplier.flat().map(mapSupplierProduct),
       conversations: apiConversations.map(mapConversation),
+      expenses: apiExpenses.map(mapExpense),
     };
     dispatch({ type: "SET_REMOTE_DATA", ...data });
     setDataVersion((v) => v + 1);
@@ -675,6 +710,21 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
         isActive: profileRow.is_active ?? true,
       };
       dispatch({ type: "SET_AUTH_SESSION", user });
+
+      // Reaplica a impersonação salva (ver efeito abaixo) se o F5 aconteceu
+      // enquanto um admin_saas estava "vestindo" uma loja — ENTER_TENANT_AS_
+      // GESTOR é só estado em memória, sessionStorage é a única forma de
+      // sobreviver a um reload. Sincrono (igual handleEnterAsGestor em
+      // AdminTenantsPage) antes de refreshCrmData(), pra essa primeira busca
+      // já sair com o header X-Impersonate-Tenant certo.
+      if (user.role === "admin_saas") {
+        const saved = readSavedImpersonation();
+        if (saved) {
+          setImpersonatedTenantId(saved.tenantId);
+          dispatch({ type: "ENTER_TENANT_AS_GESTOR", tenantId: saved.tenantId, tenantName: saved.tenantName });
+        }
+      }
+
       try {
         await refreshCrmData();
       } catch {
@@ -682,18 +732,24 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
       }
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      applyRealSession(data.session).finally(() => {
-        if (active) setAuthReady(true);
-      });
-    });
-
+    // onAuthStateChange dispara INITIAL_SESSION exatamente uma vez, assim que
+    // termina de ler a sessão persistida do storage — diferente de
+    // getSession(), que num F5 pode resolver com session: null uma fração de
+    // segundo antes desse evento chegar (padrão conhecido do supabase-js).
+    // Só usar getSession() aqui (como antes) deixava authReady virar true
+    // antes da sessão real chegar: o AppShell via session null e
+    // redirecionava pra /login, e de lá o próprio /login mandava de volta
+    // pra "/" assim que a sessão real chegasse — perdendo a rota original
+    // (/pipeline, /clientes/123 etc.) a cada F5.
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         dispatch({ type: "LOGOUT" });
+        if (active) setAuthReady(true);
         return;
       }
-      applyRealSession(session);
+      applyRealSession(session).finally(() => {
+        if (active) setAuthReady(true);
+      });
     });
 
     return () => {
@@ -786,8 +842,16 @@ export function CrmProvider({ children }: { children: ReactNode }): JSX.Element 
   // sessão: liga quando ENTER_TENANT_AS_GESTOR ou o re-sync de
   // SET_AUTH_SESSION preservam uma impersonação, desliga quando
   // EXIT_IMPERSONATION (ou qualquer outro caminho) volta pro perfil real.
+  // Também persiste/limpa a impersonação em sessionStorage — é o que deixa
+  // o bootstrap acima (applyRealSession) reaplicá-la sozinho depois de um F5.
   useEffect(() => {
-    setImpersonatedTenantId(isImpersonating(state) ? state.session!.tenantId : null);
+    const impersonating = isImpersonating(state);
+    setImpersonatedTenantId(impersonating ? state.session!.tenantId : null);
+    if (impersonating) {
+      saveImpersonation({ tenantId: state.session!.tenantId, tenantName: state.session!.tenantName ?? "" });
+    } else {
+      clearSavedImpersonation();
+    }
   }, [state]);
 
   const value = useMemo(() => ({ state, dispatch, refreshCrmData, dataVersion }), [state, dataVersion]);

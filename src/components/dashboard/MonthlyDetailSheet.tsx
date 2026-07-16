@@ -65,7 +65,11 @@ export function MonthlyDetailSheet({ open, onOpenChange, month, rows, onEdit, on
       <SheetContent side="right" className="sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>{month}</SheetTitle>
-          <SheetDescription>Negócios ganhos neste mês, com o detalhamento de lucro líquido.</SheetDescription>
+          <SheetDescription>
+            Negócios ganhos neste mês, com o detalhamento de lucro líquido. "Líquido" aqui é por negócio (venda menos
+            fornecedor, brindes e frete) — os gastos gerais da loja no mês (Gastos) não entram nesta tabela, só no
+            total do Dashboard.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="flex flex-col gap-3 overflow-y-auto px-4 pb-4">

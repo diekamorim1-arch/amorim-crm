@@ -197,9 +197,17 @@ export function DashboardPage() {
           valueClassName="font-display"
         />
         <MetricCard
+          label="Gastos no mês"
+          value={brl(metrics.expensesMonth)}
+          valueClassName="font-mono tabular-nums text-xl"
+          onClick={() => navigate("/gastos")}
+          hint="Despesas gerais da loja lançadas em Gastos — já descontadas do lucro líquido ao lado."
+        />
+        <MetricCard
           label="Lucro líquido no mês"
           value={brl(metrics.netProfitMonth)}
           valueClassName="font-mono tabular-nums text-xl"
+          hint="Lucro por negócio (venda menos custo de fornecedor, brindes e frete) já descontando os gastos gerais do mês."
         />
       </div>
 

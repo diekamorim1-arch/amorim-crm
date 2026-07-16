@@ -500,6 +500,7 @@ export interface ApiMonthlyHistoryItem {
   month_key: string;
   new_leads: number;
   revenue: number;
+  expenses: number;
   net_profit: number;
 }
 
@@ -508,6 +509,7 @@ export interface MonthlyHistoryItem {
   monthKey: string;
   newLeads: number;
   revenue: number;
+  expenses: number;
   netProfit: number;
 }
 
@@ -517,6 +519,7 @@ export function mapMonthlyHistoryItem(api: ApiMonthlyHistoryItem): MonthlyHistor
     monthKey: api.month_key,
     newLeads: api.new_leads,
     revenue: api.revenue,
+    expenses: api.expenses,
     netProfit: api.net_profit,
   };
 }
